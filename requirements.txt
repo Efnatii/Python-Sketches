@@ -1,0 +1,8 @@
+pygame
+pynput
+pillow
+pytesseract
+translate
+pywin32
+requests
+tiktoken

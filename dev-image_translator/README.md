@@ -17,7 +17,13 @@
 
 - Windows (используется WinAPI через `pywin32`).
 - Установленный Tesseract OCR. По умолчанию путь к исполняемому файлу ожидается `C:\\Program Files\\Tesseract-OCR\\tesseract.exe`.
-- Пакеты Python: `pynput`, `pillow`, `pytesseract`, `translate`, `pygame`, `pywin32`.
+- Python‑пакеты из файла `requirements.txt`.
+
+Установите их командой:
+
+```bash
+pip install -r requirements.txt
+```
 
 ## Запуск
 
