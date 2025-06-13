@@ -1,4 +1,5 @@
 import os
+import sys
 import tempfile
 from pathlib import Path
 import unittest
@@ -22,7 +23,10 @@ except Exception:
     Screenshot = None
 
 class TestScreenshot(unittest.TestCase):
-    @unittest.skipUnless(AVAILABLE, 'Screenshot functionality not available')
+    @unittest.skipUnless(
+        sys.platform.startswith('win') and AVAILABLE,
+        'Screenshot functionality not available',
+    )
     def test_grab_creates_file(self):
         tmp_file = Path(tempfile.gettempdir()) / 'test_screenshot.bmp'
         if tmp_file.exists():
