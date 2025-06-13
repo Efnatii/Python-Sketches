@@ -84,6 +84,7 @@ if __name__ == "__main__":
     done = False
     text = ["..."]
     text_size = 0
+    fade = 1.0
     pressed = False
     time = 0
     delta = 0
@@ -110,7 +111,7 @@ if __name__ == "__main__":
         global done
         global pressed
         global x, y, w, h
-
+        global fade
         if pressed:
             Window.set_size(w := cursor_position[0] - x, h := cursor_position[1] - y)
             screen.fill((0, 0, 0))
@@ -122,6 +123,7 @@ if __name__ == "__main__":
         global done
         global pressed
         global x, y, w, h
+        global fade
 
         if _button == mouse.Button.right:
             if pressed := _pressed:
@@ -145,6 +147,7 @@ if __name__ == "__main__":
                 w += 20
                 h += 10
                 Window.set_size(w, h)
+                fade = 0.0
 
             return not done
 
@@ -153,6 +156,7 @@ if __name__ == "__main__":
     while not done:
         cursor_position = win32api.GetCursorPos()
         time = (time + 0.001 * delta) % 1
+        fade = min(fade + 0.002 * delta, 1.0)
         _blink = sin(time * 3.14) / 2
         _blinked_color = (125 + 130 * _blink, 125 + 130 * _blink, 125 + 130 * _blink, 0)
 
@@ -160,12 +164,17 @@ if __name__ == "__main__":
             Window.set_position(cursor_position[0] + 12, cursor_position[1] + 14)
 
             for idx in range(len(text)):
-                screen.blit(font.render(text[idx], False, _blinked_color), (10, 0 + idx * text_size[idx][1]))
+                surf = font.render(text[idx], False, _blinked_color)
+                surf.set_alpha(int(255 * fade))
+                screen.blit(surf, (10, 0 + idx * text_size[idx][1]))
 
             pygame.display.flip()
             screen.fill((0, 0, 0))
         else:
-            pygame.draw.rect(screen, _blinked_color, (0, 0, w, h), 1, 0)
+            overlay = pygame.Surface((abs(w), abs(h)), pygame.SRCALPHA)
+            overlay.fill((80, 160 + 95 * _blink, 255, 80 + 50 * _blink))
+            screen.blit(overlay, (0, 0))
+            pygame.draw.rect(screen, _blinked_color, (0, 0, w, h), 2, 0)
             pygame.display.flip()
 
         for event in pygame.event.get():
