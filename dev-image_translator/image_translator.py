@@ -13,7 +13,7 @@ from PIL import Image
 
 import ctypes
 
-WINDOWS = sys.platform.startswith("win") or "win32gui" in sys.modules
+WINDOWS = sys.platform.startswith("win")
 
 if WINDOWS:
     from pynput import mouse, keyboard
@@ -259,13 +259,11 @@ class ImageTranslatorApp:
         self.clock = pygame.time.Clock()
 
         self.text_size = [self.font.size(self.text[0])]
-        self.w = self.text_size[0][0] + 30
-        self.h = self.text_size[0][1] + 30
 
         Window.init(pygame.display.get_wm_info()["window"])
         Window.make_transparent()
         LayeredWindow.init(Window.hwnd)
-        Window.set_size(self.w, self.h)
+        Window.set_size(self.text_size[0][0] + 30, self.text_size[0][1] + 30)
 
         self.key_state = set()
         keyboard.Listener(
