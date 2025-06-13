@@ -281,13 +281,12 @@ class ImageTranslatorApp:
                 Window.set_size(width + 2, height + 2)
                 self.screen.fill((0, 0, 0))
 
-                start_x, start_y, end_x, end_y = self.drag_points
-                sx = start_x - (left - 1)
-                sy = start_y - (top - 1)
-                ex = end_x - (left - 1)
-                ey = end_y - (top - 1)
-                points = [(sx, sy), (ex, sy), (ex, ey), (sx, ey)]
-                pygame.draw.lines(self.screen, blink_color, True, points, 2)
+                pygame.draw.rect(
+                    self.screen,
+                    blink_color,
+                    (1, 1, width, height),
+                    2,
+                )
                 pygame.display.flip()
 
             for event in pygame.event.get():
