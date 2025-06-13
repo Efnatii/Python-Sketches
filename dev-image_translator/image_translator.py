@@ -81,6 +81,7 @@ if __name__ == "__main__":
     cursor_position = [0, 0]
     rect = [0, 0, 0, 0]
     drag_rect = [0, 0, 1, 1]
+    drag_points = [0, 0, 0, 0]
     x, y, w, h = 0, 0, 0, 0
     done = False
     text = ["..."]
@@ -110,10 +111,11 @@ if __name__ == "__main__":
     Window.set_size(w := text_size[0][0] + 30, h := text_size[0][1] + 30)
 
     def on_move(_x, _y):
-        global drag_rect
+        global drag_rect, drag_points
         if pressed:
-            _x1, _y1 = x, y
-            _x2, _y2 = _x, _y
+            drag_points[2:] = [_x, _y]
+            _x1, _y1 = drag_points[0], drag_points[1]
+            _x2, _y2 = drag_points[2], drag_points[3]
             drag_rect[0] = min(_x1, _x2)
             drag_rect[1] = min(_y1, _y2)
             drag_rect[2] = abs(_x2 - _x1)
@@ -133,11 +135,12 @@ if __name__ == "__main__":
             if pressed := _pressed:
                 rect[0:2] = [x := _x, y := _y]
                 drag_rect[0:4] = [x, y, 1, 1]
+                drag_points[0:4] = [x, y, x, y]
             else:
-                rect[2:4] = [_x - rect[0], _y - rect[1]]
+                drag_points[2:] = [_x, _y]
 
-                _x1, _y1 = rect[0], rect[1]
-                _x2, _y2 = _x, _y
+                _x1, _y1 = drag_points[0], drag_points[1]
+                _x2, _y2 = drag_points[2], drag_points[3]
                 rect[0] = min(_x1, _x2)
                 rect[1] = min(_y1, _y2)
                 rect[2] = abs(_x2 - _x1)
@@ -197,10 +200,22 @@ if __name__ == "__main__":
             pygame.display.flip()
             screen.fill((0, 0, 0))
         else:
-            Window.set_position(drag_rect[0], drag_rect[1])
-            Window.set_size(drag_rect[2], drag_rect[3])
+            start_x, start_y, end_x, end_y = drag_points
+            left = min(start_x, end_x)
+            top = min(start_y, end_y)
+            width = abs(end_x - start_x)
+            height = abs(end_y - start_y)
+
+            Window.set_position(left, top)
+            Window.set_size(width, height)
             screen.fill((0, 0, 0))
-            pygame.draw.rect(screen, _blinked_color, (0, 0, drag_rect[2], drag_rect[3]), 2, 0)
+
+            sx = start_x - left
+            sy = start_y - top
+            ex = end_x - left
+            ey = end_y - top
+            points = [(sx, sy), (ex, sy), (ex, ey), (sx, ey)]
+            pygame.draw.lines(screen, _blinked_color, True, points, 2)
             pygame.display.flip()
 
         for event in pygame.event.get():
