@@ -388,13 +388,10 @@ class ImageTranslatorApp:
                 Window.set_position(self.cursor_position[0] + 22, self.cursor_position[1] + 24)
                 Window.set_size(self.w, self.h)
 
-                surface_to_update = self.screen.subsurface((0, 0, self.w, self.h))
-                surface_to_update.fill((0, 0, 0, 0))
-
                 if self.text and self.text != ["..."]:
                     bg = self.pygame.Surface((self.w, self.h), self.pygame.SRCALPHA)
                     bg.fill((32, 32, 32, int(200 * self.fade)))
-                    surface_to_update.blit(bg, (0, 0))
+                    self.screen.blit(bg, (0, 0))
 
                     total_h = sum(s[1] for s in self.text_size)
                     y = (self.h - total_h) // 2
@@ -402,25 +399,25 @@ class ImageTranslatorApp:
                         surf = self.font.render(line, False, blink_color)
                         surf.set_alpha(int(255 * self.fade))
                         x = (self.w - size[0]) // 2
-                        surface_to_update.blit(surf, (x, y))
+                        self.screen.blit(surf, (x, y))
                         y += size[1]
 
-                LayeredWindow.update(surface_to_update)
+                LayeredWindow.update(self.screen)
+                self.screen.fill((0, 0, 0, 0))
             else:
                 left, top, width, height = self.current_drag_rect
 
                 Window.set_position(left - 1, top - 1)
                 Window.set_size(width + 2, height + 2)
-                surface_to_update = self.screen.subsurface((0, 0, width + 2, height + 2))
-                surface_to_update.fill((0, 0, 0, 0))
+                self.screen.fill((0, 0, 0, 0))
 
                 pygame.draw.rect(
-                    surface_to_update,
+                    self.screen,
                     blink_color,
                     (1, 1, width, height),
                     2,
                 )
-                LayeredWindow.update(surface_to_update)
+                LayeredWindow.update(self.screen)
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
