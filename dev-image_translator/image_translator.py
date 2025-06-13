@@ -1,13 +1,10 @@
 from pynput import mouse
-from pynput import keyboard
 from PIL import Image
 
 import win32gui
 import win32ui
 import win32con
 import win32api
-
-from time import sleep
 
 from math import sin
 
@@ -56,6 +53,29 @@ class Screenshot:
         compatible_dc.DeleteDC()
         win32gui.ReleaseDC(hwnd, window_dc)
         win32gui.DeleteObject(data_bitmap.GetHandle())
+
+    @classmethod
+    def grab_image(cls, rect, hwnd=0):
+        """Return a PIL Image of the screen region without writing to disk."""
+        window_dc = win32gui.GetWindowDC(hwnd)
+        dc_object = win32ui.CreateDCFromHandle(window_dc)
+        compatible_dc = dc_object.CreateCompatibleDC()
+
+        data_bitmap = win32ui.CreateBitmap()
+        data_bitmap.CreateCompatibleBitmap(dc_object, rect[2], rect[3])
+
+        compatible_dc.SelectObject(data_bitmap)
+        compatible_dc.BitBlt((0, 0), (rect[2], rect[3]), dc_object, (rect[0], rect[1]), win32con.SRCCOPY)
+
+        bmp_info = data_bitmap.GetInfo()
+        bmp_str = data_bitmap.GetBitmapBits(True)
+
+        dc_object.DeleteDC()
+        compatible_dc.DeleteDC()
+        win32gui.ReleaseDC(hwnd, window_dc)
+        win32gui.DeleteObject(data_bitmap.GetHandle())
+
+        return Image.frombuffer('RGB', (bmp_info['bmWidth'], bmp_info['bmHeight']), bmp_str, 'raw', 'BGRX', 0, 1)
 
 if __name__ == "__main__":
     cursor_position = [0, 0]
@@ -112,8 +132,8 @@ if __name__ == "__main__":
                 rect[2:4] = [_x - rect[0], _y - rect[1]]
                 Window.set_size(w := cursor_position[0] - x, h := cursor_position[1] - y)
 
-                Screenshot.grab(rect)
-                _raw_text = pytesseract.image_to_string(Image.open(r".\screenshots\screenshot.bmp"))[:-1]
+                img = Screenshot.grab_image(rect)
+                _raw_text = pytesseract.image_to_string(img, lang='eng').strip()
                 text = ("(" + _raw_text + ")\n\n" + translator.translate(_raw_text)).split('\n')
                 text_size = [font.size(_text) for _text in text]
                 w = 0
@@ -152,7 +172,7 @@ if __name__ == "__main__":
             if event.type == pygame.QUIT:
                 done = True
 
-        delta = clock.tick(0)
+        delta = clock.tick(60)
 
     pygame.quit()
     quit()
