@@ -9,6 +9,7 @@
 
 from pynput import mouse, keyboard
 from PIL import Image
+import os
 
 import ctypes
 
@@ -74,8 +75,10 @@ class Screenshot:
     """Функции для создания скриншотов через WinAPI."""
 
     @classmethod
-    def grab(cls, rect, bmp_filename=r".\screenshots\screenshot.bmp", hwnd=0):
+    def grab(cls, rect, bmp_filename=None, hwnd=0):
         """Захватывает прямоугольную область экрана и сохраняет её в ``bmp_filename``."""
+        if bmp_filename is None:
+            bmp_filename = os.path.join(os.path.dirname(__file__), "screenshots", "screenshot.bmp")
         window_dc = win32gui.GetWindowDC(hwnd)
         dc_object = win32ui.CreateDCFromHandle(window_dc)
         compatible_dc = dc_object.CreateCompatibleDC()
