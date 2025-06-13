@@ -9,6 +9,8 @@ displayed near the cursor.
 from pynput import mouse
 from PIL import Image
 
+import ctypes
+
 import win32gui
 import win32ui
 import win32con
@@ -19,6 +21,12 @@ from math import sin
 import pytesseract
 
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+
+try:
+    ctypes.windll.user32.SetProcessDPIAware()
+except Exception:
+    # Fallback for older Windows versions or missing attribute
+    pass
 
 from translate import Translator
 
