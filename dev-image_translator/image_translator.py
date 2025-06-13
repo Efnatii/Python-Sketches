@@ -56,10 +56,9 @@ class Window:
     def make_transparent(cls, color=(0, 0, 0), alpha=255):
         """Делает окно прозрачным по заданному цвету.
 
-        ``alpha`` оставлен для обратной совместимости, но на данный момент
-        окно всегда получает значение прозрачности ``255`` и флаги
-        ``LWA_COLORKEY | LWA_ALPHA``. Это позволяет использовать
-        полупрозрачные поверхности, созданные в ``pygame``.
+        ``alpha`` оставлен для обратной совместимости, но используется
+        только маска цвета ``LWA_COLORKEY``. Полупрозрачность обеспечивается
+        через :func:`UpdateLayeredWindow`.
         """
         win32gui.SetWindowLong(
             cls.hwnd,
@@ -69,9 +68,101 @@ class Window:
         win32gui.SetLayeredWindowAttributes(
             cls.hwnd,
             win32api.RGB(*color),
-            255,
-            win32con.LWA_COLORKEY | win32con.LWA_ALPHA,
+            0,
+            win32con.LWA_COLORKEY,
         )
+
+
+class LayeredWindow(Window):
+    """Обновление содержимого окна через ``UpdateLayeredWindow``."""
+
+    @classmethod
+    def init(cls, hwnd):
+        cls.hwnd = hwnd
+
+    @classmethod
+    def update(cls, surface):
+        import pygame
+
+        width, height = surface.get_size()
+        data = pygame.image.tostring(surface, "BGRA")
+
+        hdc_screen = win32gui.GetDC(0)
+        mem_dc = win32gui.CreateCompatibleDC(hdc_screen)
+
+        class BITMAPINFOHEADER(ctypes.Structure):
+            _fields_ = [
+                ("biSize", ctypes.c_uint32),
+                ("biWidth", ctypes.c_long),
+                ("biHeight", ctypes.c_long),
+                ("biPlanes", ctypes.c_ushort),
+                ("biBitCount", ctypes.c_ushort),
+                ("biCompression", ctypes.c_uint32),
+                ("biSizeImage", ctypes.c_uint32),
+                ("biXPelsPerMeter", ctypes.c_long),
+                ("biYPelsPerMeter", ctypes.c_long),
+                ("biClrUsed", ctypes.c_uint32),
+                ("biClrImportant", ctypes.c_uint32),
+            ]
+
+        class BITMAPINFO(ctypes.Structure):
+            _fields_ = [("bmiHeader", BITMAPINFOHEADER), ("bmiColors", ctypes.c_uint32 * 1)]
+
+        class SIZE(ctypes.Structure):
+            _fields_ = [("cx", ctypes.c_long), ("cy", ctypes.c_long)]
+
+        class POINT(ctypes.Structure):
+            _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+        class BLENDFUNCTION(ctypes.Structure):
+            _fields_ = [
+                ("BlendOp", ctypes.c_byte),
+                ("BlendFlags", ctypes.c_byte),
+                ("SourceConstantAlpha", ctypes.c_byte),
+                ("AlphaFormat", ctypes.c_byte),
+            ]
+
+        bmi = BITMAPINFO()
+        bmi.bmiHeader.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+        bmi.bmiHeader.biWidth = width
+        bmi.bmiHeader.biHeight = -height  # top-down DIB
+        bmi.bmiHeader.biPlanes = 1
+        bmi.bmiHeader.biBitCount = 32
+        bmi.bmiHeader.biCompression = win32con.BI_RGB
+        bmi.bmiHeader.biSizeImage = len(data)
+
+        bits = ctypes.c_void_p()
+        hbitmap = ctypes.windll.gdi32.CreateDIBSection(
+            mem_dc, ctypes.byref(bmi), win32con.DIB_RGB_COLORS, ctypes.byref(bits), 0, 0
+        )
+        ctypes.memmove(bits, data, len(data))
+        old_bmp = win32gui.SelectObject(mem_dc, hbitmap)
+
+        blend = BLENDFUNCTION()
+        blend.BlendOp = win32con.AC_SRC_OVER
+        blend.BlendFlags = 0
+        blend.SourceConstantAlpha = 255
+        blend.AlphaFormat = win32con.AC_SRC_ALPHA
+
+        size = SIZE(width, height)
+        src_pt = POINT(0, 0)
+
+        ctypes.windll.user32.UpdateLayeredWindow(
+            cls.hwnd,
+            0,
+            None,
+            ctypes.byref(size),
+            mem_dc,
+            ctypes.byref(src_pt),
+            0,
+            ctypes.byref(blend),
+            win32con.ULW_ALPHA,
+        )
+
+        win32gui.SelectObject(mem_dc, old_bmp)
+        win32gui.DeleteObject(hbitmap)
+        win32gui.DeleteDC(mem_dc)
+        win32gui.ReleaseDC(0, hdc_screen)
 
 class Screenshot:
     """Функции для создания скриншотов через WinAPI."""
@@ -158,6 +249,7 @@ class ImageTranslatorApp:
 
         Window.init(pygame.display.get_wm_info()["window"])
         Window.make_transparent()
+        LayeredWindow.init(Window.hwnd)
         Window.set_size(self.text_size[0][0] + 30, self.text_size[0][1] + 30)
 
         self.key_state = set()
@@ -297,7 +389,7 @@ class ImageTranslatorApp:
                         self.screen.blit(surf, (x, y))
                         y += size[1]
 
-                pygame.display.flip()
+                LayeredWindow.update(self.screen)
                 self.screen.fill((0, 0, 0, 0))
             else:
                 left, top, width, height = self.current_drag_rect
@@ -312,7 +404,7 @@ class ImageTranslatorApp:
                     (1, 1, width, height),
                     2,
                 )
-                pygame.display.flip()
+                LayeredWindow.update(self.screen)
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
