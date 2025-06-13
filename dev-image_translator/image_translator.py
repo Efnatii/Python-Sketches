@@ -55,8 +55,11 @@ class Window:
     def make_transparent(cls, color=(0, 0, 0), alpha=255):
         """Делает окно прозрачным по заданному цвету.
 
-        ``alpha`` остаётся для совместимости, но постоянная прозрачность не
-        устанавливается, чтобы учитывалась альфа каждого пикселя поверхностей.
+        ``alpha`` оставлен для обратной совместимости. Значение передаётся
+        в :func:`SetLayeredWindowAttributes`, хотя используется только флаг
+        ``LWA_COLORKEY``. Это позволяет сохранить прежний интерфейс, не
+        устанавливая постоянную прозрачность и учитывая альфа каждого
+        пикселя.
         """
         win32gui.SetWindowLong(
             cls.hwnd,
@@ -66,7 +69,7 @@ class Window:
         win32gui.SetLayeredWindowAttributes(
             cls.hwnd,
             win32api.RGB(*color),
-            alpha,
+            alpha,  # параметр игнорируется без флага LWA_ALPHA
             win32con.LWA_COLORKEY,
         )
 
