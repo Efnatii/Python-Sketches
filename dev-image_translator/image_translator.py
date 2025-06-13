@@ -86,6 +86,48 @@ class Window:
             win32con.LWA_COLORKEY | win32con.LWA_ALPHA,
         )
 
+    @classmethod
+    def enable_blur(cls):
+        """Включить размытие позади окна, если поддерживается системой."""
+        if not WINDOWS or cls.hwnd is None:
+            return
+        try:
+            dwmapi = ctypes.windll.dwmapi
+
+            class DWM_BLURBEHIND(ctypes.Structure):
+                _fields_ = [
+                    ("dwFlags", ctypes.c_uint),
+                    ("fEnable", ctypes.c_bool),
+                    ("hRgnBlur", ctypes.c_void_p),
+                    ("fTransitionOnMaximized", ctypes.c_bool),
+                ]
+
+            blur = DWM_BLURBEHIND(1, True, None, False)
+            dwmapi.DwmEnableBlurBehindWindow(cls.hwnd, ctypes.byref(blur))
+        except Exception:
+            try:
+                class ACCENTPOLICY(ctypes.Structure):
+                    _fields_ = [
+                        ("AccentState", ctypes.c_int),
+                        ("AccentFlags", ctypes.c_int),
+                        ("GradientColor", ctypes.c_int),
+                        ("AnimationId", ctypes.c_int),
+                    ]
+
+                class WINDOWCOMPOSITIONATTRIBDATA(ctypes.Structure):
+                    _fields_ = [
+                        ("Attribute", ctypes.c_int),
+                        ("Data", ctypes.c_void_p),
+                        ("SizeOfData", ctypes.c_size_t),
+                    ]
+
+                accent = ACCENTPOLICY(3, 0, 0, 0)
+                data = WINDOWCOMPOSITIONATTRIBDATA(19, ctypes.byref(accent), ctypes.sizeof(accent))
+                ctypes.windll.user32.SetWindowCompositionAttribute(cls.hwnd, ctypes.byref(data))
+            except Exception:
+                # Игнорируем, если API недоступно
+                pass
+
 class Screenshot:
     """Функции для создания скриншотов через WinAPI."""
 
@@ -171,6 +213,7 @@ class ImageTranslatorApp:
 
         Window.init(pygame.display.get_wm_info()["window"])
         Window.make_transparent()
+        Window.enable_blur()
         Window.set_size(self.text_size[0][0] + 30, self.text_size[0][1] + 30)
 
         self.key_state = set()
@@ -297,10 +340,6 @@ class ImageTranslatorApp:
                 Window.set_size(self.w, self.h)
 
                 if self.text and self.text != ["..."]:
-                    bg = self.pygame.Surface((self.w, self.h), self.pygame.SRCALPHA)
-                    bg.fill((32, 32, 32, int(200 * self.fade)))
-                    self.screen.blit(bg, (0, 0))
-
                     total_h = sum(s[1] for s in self.text_size)
                     y = (self.h - total_h) // 2
                     for idx, (line, size) in enumerate(zip(self.text, self.text_size)):
