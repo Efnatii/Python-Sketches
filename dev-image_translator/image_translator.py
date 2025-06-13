@@ -115,7 +115,18 @@ if __name__ == "__main__":
         global x, y, w, h
         global fade
         if pressed:
-            Window.set_size(w := cursor_position[0] - x, h := cursor_position[1] - y)
+            _w = cursor_position[0] - x
+            _h = cursor_position[1] - y
+            _x_pos = x
+            _y_pos = y
+            if _w < 0:
+                _x_pos += _w
+                _w = -_w
+            if _h < 0:
+                _y_pos += _h
+                _h = -_h
+            Window.set_position(_x_pos, _y_pos)
+            Window.set_size(w := _w, h := _h)
             screen.fill((0, 0, 0))
 
         return not done
@@ -137,18 +148,15 @@ if __name__ == "__main__":
             else:
                 rect[2:4] = [_x - rect[0], _y - rect[1]]
 
-                _w = cursor_position[0] - x
-                _h = cursor_position[1] - y
-                _x_pos = x
-                _y_pos = y
-                if _w < 0:
-                    _x_pos += _w
-                    _w = -_w
-                if _h < 0:
-                    _y_pos += _h
-                    _h = -_h
-                Window.set_position(_x_pos, _y_pos)
-                Window.set_size(w := _w, h := _h)
+                _x1, _y1 = rect[0], rect[1]
+                _x2, _y2 = _x, _y
+                rect[0] = min(_x1, _x2)
+                rect[1] = min(_y1, _y2)
+                rect[2] = abs(_x2 - _x1)
+                rect[3] = abs(_y2 - _y1)
+
+                Window.set_position(rect[0], rect[1])
+                Window.set_size(w := rect[2], h := rect[3])
 
                 text = ["..."]
                 text_size = [font.size(text[0])]
