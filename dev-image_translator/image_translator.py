@@ -242,7 +242,10 @@ class ImageTranslatorApp:
                 self.pending_text = None
 
             if not self.pressed:
-                Window.set_position(self.cursor_position[0] + 12, self.cursor_position[1] + 14)
+                # Move the translation window slightly further away from the
+                # cursor so it does not obstruct it. The previous offset was
+                # (12, 14); shift it an additional 10 pixels diagonally.
+                Window.set_position(self.cursor_position[0] + 22, self.cursor_position[1] + 24)
                 Window.set_size(self.w, self.h)
 
                 for idx, line in enumerate(self.text):
