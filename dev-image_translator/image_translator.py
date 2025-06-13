@@ -82,7 +82,7 @@ class Window:
         win32gui.SetLayeredWindowAttributes(
             cls.hwnd,
             win32api.RGB(*color),
-            255,
+            alpha,
             win32con.LWA_COLORKEY | win32con.LWA_ALPHA,
         )
 
