@@ -15,17 +15,21 @@ import ctypes
 
 WINDOWS = sys.platform.startswith("win")
 
-from pynput import mouse, keyboard
-try:
-    import win32gui
-    import win32ui
-    import win32con
-    import win32api
-except ImportError as exc:  # pragma: no cover - platform specific
-    if WINDOWS:
+if WINDOWS:
+    from pynput import mouse, keyboard
+    try:
+        import win32gui
+        import win32ui
+        import win32con
+        import win32api
+    except ImportError as exc:  # pragma: no cover - platform specific
         raise ImportError(
             "Required Windows dependencies are missing: {}".format(exc)
         ) from exc
+else:  # pragma: no cover - platform specific
+    raise ImportError(
+        "The image_translator module only supports Windows platforms"
+    )
 
 from math import sin
 
@@ -164,73 +168,6 @@ class Window:
                 ctypes.windll.user32.SetWindowCompositionAttribute(cls.hwnd, ctypes.byref(data))
             except Exception:
                 pass
-
-
-class LayeredWindow:
-    """Simplified helper for updating layered windows."""
-
-    hwnd = None
-
-    @classmethod
-    def init(cls, hwnd):
-        """Store window handle for future updates."""
-        cls.hwnd = hwnd
-
-    @classmethod
-    def update(cls, surface):
-        """Update the layered window with ``surface`` contents."""
-        import pygame
-
-        width, height = surface.get_size()
-        raw = pygame.image.tostring(surface, "BGRA")
-
-        hdc = win32gui.GetDC(0)
-        mem_dc = win32gui.CreateCompatibleDC(hdc)
-
-        bmp = ctypes.windll.gdi32.CreateDIBSection(
-            mem_dc,
-            None,
-            win32con.DIB_RGB_COLORS,
-            None,
-            None,
-            0,
-        )
-        old_bmp = win32gui.SelectObject(mem_dc, bmp)
-
-        ctypes.memmove(bmp, raw, len(raw))
-
-        win32gui.SelectObject(mem_dc, old_bmp)
-
-        class BLENDFUNCTION(ctypes.Structure):
-            _fields_ = [
-                ("BlendOp", ctypes.c_byte),
-                ("BlendFlags", ctypes.c_byte),
-                ("SourceConstantAlpha", ctypes.c_byte),
-                ("AlphaFormat", ctypes.c_byte),
-            ]
-
-        blend = BLENDFUNCTION(
-            win32con.AC_SRC_OVER,
-            0,
-            255,
-            win32con.AC_SRC_ALPHA,
-        )
-
-        ctypes.windll.user32.UpdateLayeredWindow(
-            cls.hwnd,
-            hdc,
-            None,
-            (width, height),
-            mem_dc,
-            (0, 0),
-            0,
-            ctypes.byref(blend),
-            win32con.ULW_ALPHA,
-        )
-
-        win32gui.DeleteObject(bmp)
-        win32gui.DeleteDC(mem_dc)
-        win32gui.ReleaseDC(0, hdc)
 
 class Screenshot:
     """Функции для создания скриншотов через WinAPI."""
@@ -458,22 +395,6 @@ class ImageTranslatorApp:
                 Window.set_size(self.w, self.h)
 
                 if self.text and self.text != ["..."]:
-                    radius = 10
-                    shadow_rect = pygame.Rect(4, 4, self.w, self.h)
-                    pygame.draw.rect(
-                        self.screen,
-                        (0, 0, 0, 80),
-                        shadow_rect,
-                        border_radius=radius + 4,
-                    )
-                    bg_rect = pygame.Rect(0, 0, self.w, self.h)
-                    pygame.draw.rect(
-                        self.screen,
-                        (30, 30, 30, 160),
-                        bg_rect,
-                        border_radius=radius,
-                    )
-
                     total_h = sum(s[1] for s in self.text_size)
                     y = (self.h - total_h) // 2
                     for idx, (line, size) in enumerate(zip(self.text, self.text_size)):
