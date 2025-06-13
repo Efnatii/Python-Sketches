@@ -1,3 +1,11 @@
+"""Utility for translating text from screen selections.
+
+The module provides a small window that follows the cursor. When the user
+selects a rectangular region with the right mouse button, the contents of the
+region are captured, recognized via OCR and translated. The translated text is
+displayed near the cursor.
+"""
+
 from pynput import mouse
 from PIL import Image
 
@@ -15,28 +23,41 @@ pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tessera
 from translate import Translator
 
 class Window:
+    """Helper for manipulating the pygame window using WinAPI."""
+
     hwnd = None
+
     @classmethod
     def init(cls, hwnd):
+        """Store window handle for further operations."""
         cls.hwnd = hwnd
 
     @classmethod
     def set_position(cls, x, y):
+        """Move the window to the specified position."""
         win32gui.SetWindowPos(cls.hwnd, win32con.HWND_TOPMOST, x, y, 0, 0, win32con.SWP_NOSIZE)
 
     @classmethod
     def set_size(cls, w, h):
+        """Resize the window without moving it."""
         win32gui.SetWindowPos(cls.hwnd, win32con.HWND_TOPMOST, 0, 0, w, h, win32con.SWP_NOMOVE)
 
     @classmethod
-    def make_transparent(cls, color = (0, 0, 0)):
-        win32gui.SetWindowLong(cls.hwnd, win32con.GWL_EXSTYLE,
-                           win32gui.GetWindowLong(cls.hwnd, win32con.GWL_EXSTYLE) | win32con.WS_EX_LAYERED)
+    def make_transparent(cls, color=(0, 0, 0)):
+        """Make the window transparent for a specific color key."""
+        win32gui.SetWindowLong(
+            cls.hwnd,
+            win32con.GWL_EXSTYLE,
+            win32gui.GetWindowLong(cls.hwnd, win32con.GWL_EXSTYLE) | win32con.WS_EX_LAYERED,
+        )
         win32gui.SetLayeredWindowAttributes(cls.hwnd, win32api.RGB(*color), 0, win32con.LWA_COLORKEY)
 
 class Screenshot:
+    """Screenshot utilities using WinAPI."""
+
     @classmethod
-    def grab(cls, rect, bmp_filename = r".\screenshots\screenshot.bmp", hwnd = 0):
+    def grab(cls, rect, bmp_filename=r".\screenshots\screenshot.bmp", hwnd=0):
+        """Capture a rectangular region of the screen and save it to ``bmp_filename``."""
         window_dc = win32gui.GetWindowDC(hwnd)
         dc_object = win32ui.CreateDCFromHandle(window_dc)
         compatible_dc = dc_object.CreateCompatibleDC()
@@ -56,7 +77,7 @@ class Screenshot:
 
     @classmethod
     def grab_image(cls, rect, hwnd=0):
-        """Return a PIL Image of the screen region without writing to disk."""
+        """Return a :class:`PIL.Image` of the screen region without writing to disk."""
         window_dc = win32gui.GetWindowDC(hwnd)
         dc_object = win32ui.CreateDCFromHandle(window_dc)
         compatible_dc = dc_object.CreateCompatibleDC()
@@ -77,152 +98,154 @@ class Screenshot:
 
         return Image.frombuffer('RGB', (bmp_info['bmWidth'], bmp_info['bmHeight']), bmp_str, 'raw', 'BGRX', 0, 1)
 
-if __name__ == "__main__":
-    cursor_position = [0, 0]
-    rect = [0, 0, 0, 0]
-    drag_rect = [0, 0, 1, 1]
-    drag_points = [0, 0, 0, 0]
-    x, y, w, h = 0, 0, 0, 0
-    done = False
-    text = ["..."]
-    text_size = 0
-    fade = 1.0
-    pressed = False
-    pending_text = None
-    selection_counter = 0
-    time = 0
-    delta = 0
-    translator = Translator(from_lang="en", to_lang="ru")
+class ImageTranslatorApp:
+    """Interactive application for translating screen selections."""
 
-    import pygame
+    def __init__(self):
+        import pygame
 
-    pygame.init()
-    pygame.font.init()
+        # Runtime state
+        self.cursor_position = [0, 0]
+        self.rect = [0, 0, 0, 0]
+        self.drag_points = [0, 0, 0, 0]
+        self.w = self.h = 0
+        self.done = False
+        self.text = ["..."]
+        self.fade = 1.0
+        self.pressed = False
+        self.pending_text = None
+        self.selection_counter = 0
+        self.time = 0
+        self.delta = 0
 
-    screen = pygame.display.set_mode((2000, 2000), pygame.NOFRAME)
-    font = pygame.font.SysFont('sans serif', 20)
-    clock = pygame.time.Clock()
+        self.translator = Translator(from_lang="en", to_lang="ru")
 
-    text_size = [font.size(text[0])]
+        # Pygame setup
+        pygame.init()
+        pygame.font.init()
+        self.pygame = pygame
+        self.screen = pygame.display.set_mode((2000, 2000), pygame.NOFRAME)
+        self.font = pygame.font.SysFont("sans serif", 20)
+        self.clock = pygame.time.Clock()
 
-    Window.init(pygame.display.get_wm_info()["window"])
-    Window.make_transparent()
+        self.text_size = [self.font.size(self.text[0])]
 
-    Window.set_size(w := text_size[0][0] + 30, h := text_size[0][1] + 30)
+        Window.init(pygame.display.get_wm_info()["window"])
+        Window.make_transparent()
+        Window.set_size(self.text_size[0][0] + 30, self.text_size[0][1] + 30)
 
-    def on_move(_x, _y):
-        global drag_rect, drag_points
+        mouse.Listener(on_click=self.on_click, on_move=self.on_move).start()
+
+    def process_selection(self, selected_rect, proc_id):
+        """Recognize text from ``selected_rect`` and translate it."""
+        img = Screenshot.grab_image(selected_rect)
+        raw_text = pytesseract.image_to_string(img, lang="eng").strip()
+        result = self.translator.translate(raw_text).split("\n")
+        if proc_id == self.selection_counter:
+            self.pending_text = result
+
+    # Event handlers -----------------------------------------------------
+    def on_move(self, x, y):
+        if self.pressed:
+            self.drag_points[2:] = [x, y]
+        return not self.done
+
+    def on_click(self, x, y, button, pressed):
+        if button != mouse.Button.right:
+            return not self.done
+
         if pressed:
-            drag_points[2:] = [_x, _y]
-            _x1, _y1 = drag_points[0], drag_points[1]
-            _x2, _y2 = drag_points[2], drag_points[3]
-            drag_rect[0] = min(_x1, _x2)
-            drag_rect[1] = min(_y1, _y2)
-            drag_rect[2] = abs(_x2 - _x1)
-            drag_rect[3] = abs(_y2 - _y1)
-
-        return not done
-    def on_click(_x, _y, _button, _pressed):
-        global text, text_size
-        global done
-        global pressed
-        global x, y, w, h
-        global fade
-        global pending_text
-        global selection_counter
-
-        if _button == mouse.Button.right:
-            if pressed := _pressed:
-                rect[0:2] = [x := _x, y := _y]
-                drag_rect[0:4] = [x, y, 1, 1]
-                drag_points[0:4] = [x, y, x, y]
-            else:
-                drag_points[2:] = [_x, _y]
-
-                _x1, _y1 = drag_points[0], drag_points[1]
-                _x2, _y2 = drag_points[2], drag_points[3]
-                rect[0] = min(_x1, _x2)
-                rect[1] = min(_y1, _y2)
-                rect[2] = abs(_x2 - _x1)
-                rect[3] = abs(_y2 - _y1)
-
-                drag_rect[0:4] = rect[0:4]
-
-                text = ["..."]
-                text_size = [font.size(text[0])]
-                w = text_size[0][0] + 30
-                h = text_size[0][1] + 30
-                fade = 0.0
-
-                selection_counter += 1
-                current_id = selection_counter
-
-                def process(selected_rect, proc_id=current_id):
-                    img = Screenshot.grab_image(selected_rect)
-                    _raw_text = pytesseract.image_to_string(img, lang='eng').strip()
-                    result = translator.translate(_raw_text).split('\n')
-                    if proc_id == selection_counter:
-                        global pending_text
-                        pending_text = result
-
-                import threading
-                threading.Thread(target=process, args=(rect.copy(),), daemon=True).start()
-
-            return not done
-
-    mouse.Listener(on_click=on_click, on_move=on_move).start()
-
-    while not done:
-        cursor_position = win32api.GetCursorPos()
-        time = (time + 0.001 * delta) % 1
-        fade = min(fade + 0.002 * delta, 1.0)
-        _blink = sin(time * 3.14) / 2
-        _blinked_color = (125 + 130 * _blink, 125 + 130 * _blink, 125 + 130 * _blink, 0)
-
-        if pending_text is not None:
-            text = pending_text
-            text_size = [font.size(_text) for _text in text]
-            w = max(s[0] for s in text_size) + 20
-            h = sum(s[1] for s in text_size) + 10
-            Window.set_size(w, h)
-            fade = 0.0
-            pending_text = None
-
-        if not pressed:
-            Window.set_position(cursor_position[0] + 12, cursor_position[1] + 14)
-            Window.set_size(w, h)
-
-            for idx in range(len(text)):
-                surf = font.render(text[idx], False, _blinked_color)
-                surf.set_alpha(int(255 * fade))
-                screen.blit(surf, (10, 0 + idx * text_size[idx][1]))
-
-            pygame.display.flip()
-            screen.fill((0, 0, 0))
+            self.rect[0:2] = [x, y]
+            self.drag_points[0:4] = [x, y, x, y]
+            self.pressed = True
         else:
-            start_x, start_y, end_x, end_y = drag_points
-            left = min(start_x, end_x)
-            top = min(start_y, end_y)
-            width = abs(end_x - start_x)
-            height = abs(end_y - start_y)
+            self.drag_points[2:] = [x, y]
+            x1, y1 = self.drag_points[0], self.drag_points[1]
+            x2, y2 = self.drag_points[2], self.drag_points[3]
+            self.rect = [min(x1, x2), min(y1, y2), abs(x2 - x1), abs(y2 - y1)]
+            self.text = ["..."]
+            self.text_size = [self.font.size(self.text[0])]
+            self.w = self.text_size[0][0] + 30
+            self.h = self.text_size[0][1] + 30
+            self.fade = 0.0
 
-            Window.set_position(left, top)
-            Window.set_size(width, height)
-            screen.fill((0, 0, 0))
+            self.selection_counter += 1
+            current_id = self.selection_counter
 
-            sx = start_x - left
-            sy = start_y - top
-            ex = end_x - left
-            ey = end_y - top
-            points = [(sx, sy), (ex, sy), (ex, ey), (sx, ey)]
-            pygame.draw.lines(screen, _blinked_color, True, points, 2)
-            pygame.display.flip()
+            import threading
 
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                done = True
+            threading.Thread(
+                target=self.process_selection,
+                args=(self.rect.copy(), current_id),
+                daemon=True,
+            ).start()
 
-        delta = clock.tick(60)
+            self.pressed = False
 
-    pygame.quit()
-    quit()
+        return not self.done
+
+    # Main loop ----------------------------------------------------------
+    def run(self):
+        pygame = self.pygame
+        while not self.done:
+            self.cursor_position = win32api.GetCursorPos()
+            self.time = (self.time + 0.001 * self.delta) % 1
+            self.fade = min(self.fade + 0.002 * self.delta, 1.0)
+            blink = sin(self.time * 3.14) / 2
+            blink_color = (125 + 130 * blink, 125 + 130 * blink, 125 + 130 * blink, 0)
+
+            if self.pending_text is not None:
+                self.text = self.pending_text
+                self.text_size = [self.font.size(t) for t in self.text]
+                self.w = max(s[0] for s in self.text_size) + 20
+                self.h = sum(s[1] for s in self.text_size) + 10
+                Window.set_size(self.w, self.h)
+                self.fade = 0.0
+                self.pending_text = None
+
+            if not self.pressed:
+                Window.set_position(self.cursor_position[0] + 12, self.cursor_position[1] + 14)
+                Window.set_size(self.w, self.h)
+
+                for idx, line in enumerate(self.text):
+                    surf = self.font.render(line, False, blink_color)
+                    surf.set_alpha(int(255 * self.fade))
+                    self.screen.blit(surf, (10, idx * self.text_size[idx][1]))
+
+                pygame.display.flip()
+                self.screen.fill((0, 0, 0))
+            else:
+                start_x, start_y, end_x, end_y = self.drag_points
+                left = min(start_x, end_x)
+                top = min(start_y, end_y)
+                width = abs(end_x - start_x)
+                height = abs(end_y - start_y)
+
+                Window.set_position(left, top)
+                Window.set_size(width, height)
+                self.screen.fill((0, 0, 0))
+
+                sx = start_x - left
+                sy = start_y - top
+                ex = end_x - left
+                ey = end_y - top
+                points = [(sx, sy), (ex, sy), (ex, ey), (sx, ey)]
+                pygame.draw.lines(self.screen, blink_color, True, points, 2)
+                pygame.display.flip()
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.done = True
+
+            self.delta = self.clock.tick(60)
+
+        pygame.quit()
+
+
+def main():
+    """Entry point for running as a script."""
+    ImageTranslatorApp().run()
+
+
+if __name__ == "__main__":
+    main()
