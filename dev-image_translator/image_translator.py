@@ -53,7 +53,11 @@ class Window:
 
     @classmethod
     def make_transparent(cls, color=(0, 0, 0), alpha=255):
-        """Делает окно прозрачным по заданному цвету и альфе."""
+        """Делает окно прозрачным по заданному цвету.
+
+        ``alpha`` остаётся для совместимости, но постоянная прозрачность не
+        устанавливается, чтобы учитывалась альфа каждого пикселя поверхностей.
+        """
         win32gui.SetWindowLong(
             cls.hwnd,
             win32con.GWL_EXSTYLE,
@@ -63,7 +67,7 @@ class Window:
             cls.hwnd,
             win32api.RGB(*color),
             alpha,
-            win32con.LWA_COLORKEY | win32con.LWA_ALPHA,
+            win32con.LWA_COLORKEY,
         )
 
 class Screenshot:
