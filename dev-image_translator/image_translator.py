@@ -80,6 +80,7 @@ class Screenshot:
 if __name__ == "__main__":
     cursor_position = [0, 0]
     rect = [0, 0, 0, 0]
+    drag_rect = [0, 0, 1, 1]
     x, y, w, h = 0, 0, 0, 0
     done = False
     text = ["..."]
@@ -109,30 +110,18 @@ if __name__ == "__main__":
     Window.set_size(w := text_size[0][0] + 30, h := text_size[0][1] + 30)
 
     def on_move(_x, _y):
-        global cursor_position
-        global done
-        global pressed
-        global x, y, w, h
-        global fade
+        global drag_rect
         if pressed:
-            _w = cursor_position[0] - x
-            _h = cursor_position[1] - y
-            _x_pos = x
-            _y_pos = y
-            if _w < 0:
-                _x_pos += _w
-                _w = -_w
-            if _h < 0:
-                _y_pos += _h
-                _h = -_h
-            Window.set_position(_x_pos, _y_pos)
-            Window.set_size(w := _w, h := _h)
-            screen.fill((0, 0, 0))
+            _x1, _y1 = x, y
+            _x2, _y2 = _x, _y
+            drag_rect[0] = min(_x1, _x2)
+            drag_rect[1] = min(_y1, _y2)
+            drag_rect[2] = abs(_x2 - _x1)
+            drag_rect[3] = abs(_y2 - _y1)
 
         return not done
     def on_click(_x, _y, _button, _pressed):
         global text, text_size
-        global cursor_position
         global done
         global pressed
         global x, y, w, h
@@ -142,9 +131,8 @@ if __name__ == "__main__":
 
         if _button == mouse.Button.right:
             if pressed := _pressed:
-                rect[0:2] = [_x, _y]
-                Window.set_position(x := cursor_position[0], y := cursor_position[1])
-                Window.set_size(w := 1, h := 1)
+                rect[0:2] = [x := _x, y := _y]
+                drag_rect[0:4] = [x, y, 1, 1]
             else:
                 rect[2:4] = [_x - rect[0], _y - rect[1]]
 
@@ -155,12 +143,12 @@ if __name__ == "__main__":
                 rect[2] = abs(_x2 - _x1)
                 rect[3] = abs(_y2 - _y1)
 
-                Window.set_position(rect[0], rect[1])
-                Window.set_size(w := rect[2], h := rect[3])
+                drag_rect[0:4] = rect[0:4]
 
                 text = ["..."]
                 text_size = [font.size(text[0])]
-                Window.set_size(text_size[0][0] + 30, text_size[0][1] + 30)
+                w = text_size[0][0] + 30
+                h = text_size[0][1] + 30
                 fade = 0.0
 
                 selection_counter += 1
@@ -199,6 +187,7 @@ if __name__ == "__main__":
 
         if not pressed:
             Window.set_position(cursor_position[0] + 12, cursor_position[1] + 14)
+            Window.set_size(w, h)
 
             for idx in range(len(text)):
                 surf = font.render(text[idx], False, _blinked_color)
@@ -208,8 +197,10 @@ if __name__ == "__main__":
             pygame.display.flip()
             screen.fill((0, 0, 0))
         else:
+            Window.set_position(drag_rect[0], drag_rect[1])
+            Window.set_size(drag_rect[2], drag_rect[3])
             screen.fill((0, 0, 0))
-            pygame.draw.rect(screen, _blinked_color, (0, 0, w, h), 2, 0)
+            pygame.draw.rect(screen, _blinked_color, (0, 0, drag_rect[2], drag_rect[3]), 2, 0)
             pygame.display.flip()
 
         for event in pygame.event.get():
