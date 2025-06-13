@@ -86,6 +86,8 @@ if __name__ == "__main__":
     text_size = 0
     fade = 1.0
     pressed = False
+    pending_text = None
+    selection_counter = 0
     time = 0
     delta = 0
     translator = Translator(from_lang="en", to_lang="ru")
@@ -124,6 +126,8 @@ if __name__ == "__main__":
         global pressed
         global x, y, w, h
         global fade
+        global pending_text
+        global selection_counter
 
         if _button == mouse.Button.right:
             if pressed := _pressed:
@@ -134,20 +138,24 @@ if __name__ == "__main__":
                 rect[2:4] = [_x - rect[0], _y - rect[1]]
                 Window.set_size(w := cursor_position[0] - x, h := cursor_position[1] - y)
 
-                img = Screenshot.grab_image(rect)
-                _raw_text = pytesseract.image_to_string(img, lang='eng').strip()
-                text = ("(" + _raw_text + ")\n\n" + translator.translate(_raw_text)).split('\n')
-                text_size = [font.size(_text) for _text in text]
-                w = 0
-                h = 0
-                for idx in range(len(text)):
-                    w = text_size[idx][0] if text_size[idx][0] > w else w
-                    h += text_size[idx][1]
-
-                w += 20
-                h += 10
-                Window.set_size(w, h)
+                text = ["..."]
+                text_size = [font.size(text[0])]
+                Window.set_size(text_size[0][0] + 30, text_size[0][1] + 30)
                 fade = 0.0
+
+                selection_counter += 1
+                current_id = selection_counter
+
+                def process(selected_rect, proc_id=current_id):
+                    img = Screenshot.grab_image(selected_rect)
+                    _raw_text = pytesseract.image_to_string(img, lang='eng').strip()
+                    result = ("(" + _raw_text + ")\n\n" + translator.translate(_raw_text)).split('\n')
+                    if proc_id == selection_counter:
+                        global pending_text
+                        pending_text = result
+
+                import threading
+                threading.Thread(target=process, args=(rect.copy(),), daemon=True).start()
 
             return not done
 
@@ -160,6 +168,15 @@ if __name__ == "__main__":
         _blink = sin(time * 3.14) / 2
         _blinked_color = (125 + 130 * _blink, 125 + 130 * _blink, 125 + 130 * _blink, 0)
 
+        if pending_text is not None:
+            text = pending_text
+            text_size = [font.size(_text) for _text in text]
+            w = max(s[0] for s in text_size) + 20
+            h = sum(s[1] for s in text_size) + 10
+            Window.set_size(w, h)
+            fade = 0.0
+            pending_text = None
+
         if not pressed:
             Window.set_position(cursor_position[0] + 12, cursor_position[1] + 14)
 
@@ -171,9 +188,7 @@ if __name__ == "__main__":
             pygame.display.flip()
             screen.fill((0, 0, 0))
         else:
-            overlay = pygame.Surface((abs(w), abs(h)), pygame.SRCALPHA)
-            overlay.fill((80, 160 + 95 * _blink, 255, 80 + 50 * _blink))
-            screen.blit(overlay, (0, 0))
+            screen.fill((0, 0, 0))
             pygame.draw.rect(screen, _blinked_color, (0, 0, w, h), 2, 0)
             pygame.display.flip()
 
