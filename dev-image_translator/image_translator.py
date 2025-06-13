@@ -267,10 +267,19 @@ class ImageTranslatorApp:
                 Window.set_position(self.cursor_position[0] + 22, self.cursor_position[1] + 24)
                 Window.set_size(self.w, self.h)
 
-                for idx, line in enumerate(self.text):
-                    surf = self.font.render(line, False, blink_color)
-                    surf.set_alpha(int(255 * self.fade))
-                    self.screen.blit(surf, (10, idx * self.text_size[idx][1]))
+                if self.text and self.text != ["..."]:
+                    bg = self.pygame.Surface((self.w, self.h), self.pygame.SRCALPHA)
+                    bg.fill((32, 32, 32, int(128 * self.fade)))
+                    self.screen.blit(bg, (0, 0))
+
+                    total_height = sum(s[1] for s in self.text_size)
+                    y = (self.h - total_height) // 2
+                    for idx, line in enumerate(self.text):
+                        surf = self.font.render(line, False, blink_color)
+                        surf.set_alpha(int(255 * self.fade))
+                        x = (self.w - self.text_size[idx][0]) // 2
+                        self.screen.blit(surf, (x, y))
+                        y += self.text_size[idx][1]
 
                 pygame.display.flip()
                 self.screen.fill((0, 0, 0))
