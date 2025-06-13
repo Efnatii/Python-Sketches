@@ -1,5 +1,6 @@
 import os
 import tempfile
+from pathlib import Path
 import unittest
 import importlib.util
 
@@ -23,15 +24,15 @@ except Exception:
 class TestScreenshot(unittest.TestCase):
     @unittest.skipUnless(AVAILABLE, 'Screenshot functionality not available')
     def test_grab_creates_file(self):
-        tmp_file = os.path.join(tempfile.gettempdir(), 'test_screenshot.bmp')
-        if os.path.exists(tmp_file):
-            os.remove(tmp_file)
+        tmp_file = Path(tempfile.gettempdir()) / 'test_screenshot.bmp'
+        if tmp_file.exists():
+            tmp_file.unlink()
         try:
             Screenshot.grab((0, 0, 10, 10), tmp_file)
-            self.assertTrue(os.path.exists(tmp_file))
+            self.assertTrue(tmp_file.exists())
         finally:
-            if os.path.exists(tmp_file):
-                os.remove(tmp_file)
+            if tmp_file.exists():
+                tmp_file.unlink()
 
 if __name__ == '__main__':
     unittest.main()
