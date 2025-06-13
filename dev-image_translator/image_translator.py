@@ -136,7 +136,19 @@ if __name__ == "__main__":
                 Window.set_size(w := 1, h := 1)
             else:
                 rect[2:4] = [_x - rect[0], _y - rect[1]]
-                Window.set_size(w := cursor_position[0] - x, h := cursor_position[1] - y)
+
+                _w = cursor_position[0] - x
+                _h = cursor_position[1] - y
+                _x_pos = x
+                _y_pos = y
+                if _w < 0:
+                    _x_pos += _w
+                    _w = -_w
+                if _h < 0:
+                    _y_pos += _h
+                    _h = -_h
+                Window.set_position(_x_pos, _y_pos)
+                Window.set_size(w := _w, h := _h)
 
                 text = ["..."]
                 text_size = [font.size(text[0])]
@@ -149,7 +161,7 @@ if __name__ == "__main__":
                 def process(selected_rect, proc_id=current_id):
                     img = Screenshot.grab_image(selected_rect)
                     _raw_text = pytesseract.image_to_string(img, lang='eng').strip()
-                    result = ("(" + _raw_text + ")\n\n" + translator.translate(_raw_text)).split('\n')
+                    result = translator.translate(_raw_text).split('\n')
                     if proc_id == selection_counter:
                         global pending_text
                         pending_text = result
