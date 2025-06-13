@@ -221,14 +221,14 @@ class ImageTranslatorApp:
                 width = abs(end_x - start_x)
                 height = abs(end_y - start_y)
 
-                Window.set_position(left, top)
-                Window.set_size(width, height)
+                Window.set_position(left - 1, top - 1)
+                Window.set_size(width + 2, height + 2)
                 self.screen.fill((0, 0, 0))
 
-                sx = start_x - left
-                sy = start_y - top
-                ex = end_x - left
-                ey = end_y - top
+                sx = start_x - (left - 1)
+                sy = start_y - (top - 1)
+                ex = end_x - (left - 1)
+                ey = end_y - (top - 1)
                 points = [(sx, sy), (ex, sy), (ex, ey), (sx, ey)]
                 pygame.draw.lines(self.screen, blink_color, True, points, 2)
                 pygame.display.flip()
