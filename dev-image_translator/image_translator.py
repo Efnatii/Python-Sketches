@@ -7,7 +7,7 @@
 Переведённый текст отображается рядом с курсором.
 """
 
-from pynput import mouse
+from pynput import mouse, keyboard
 from PIL import Image
 
 import ctypes
@@ -146,7 +146,11 @@ class ImageTranslatorApp:
         Window.make_transparent()
         Window.set_size(self.text_size[0][0] + 30, self.text_size[0][1] + 30)
 
-        mouse.Listener(on_click=self.on_click, on_move=self.on_move).start()
+        self.key_state = set()
+        keyboard.Listener(
+            on_press=self.on_key_press, on_release=self.on_key_release
+        ).start()
+        mouse.Listener(on_move=self.on_move).start()
 
     def update_drag_rect(self):
         """Пересчитать текущий прямоугольник выделения на основе ``self.drag_points``."""
@@ -181,46 +185,60 @@ class ImageTranslatorApp:
             self.update_drag_rect()
         return not self.done
 
-    def on_click(self, x, y, button, pressed):
-        """Обрабатывать события нажатия кнопок мыши.
 
-        Координаты от ``pynput`` могут быть уже глобальными, но мы
-        запрашиваем их через ``win32api.GetCursorPos``, чтобы выделение
-        всегда основывалось на абсолютных координатах экрана.
-        """
-        if button != mouse.Button.right:
-            return not self.done
-
+    def start_selection(self):
+        """Начать выделение при нажатии горячих клавиш."""
         sx, sy = win32api.GetCursorPos()
+        self.drag_points[0:4] = [sx, sy, sx, sy]
+        self.update_drag_rect()
+        self.rect[0:2] = [sx, sy]
+        self.pressed = True
 
-        if pressed:
-            self.drag_points[0:4] = [sx, sy, sx, sy]
-            self.update_drag_rect()
-            self.rect[0:2] = [sx, sy]
-            self.pressed = True
-        else:
-            self.drag_points[2:] = [sx, sy]
-            self.update_drag_rect()
-            self.rect = self.current_drag_rect.copy()
-            self.text = ["..."]
-            self.text_size = [self.font.size(self.text[0])]
-            self.w = self.text_size[0][0] + 30
-            self.h = self.text_size[0][1] + 30
-            self.fade = 0.0
+    def finish_selection(self):
+        """Завершить выделение после отпускания горячих клавиш."""
+        sx, sy = win32api.GetCursorPos()
+        self.drag_points[2:] = [sx, sy]
+        self.update_drag_rect()
+        self.rect = self.current_drag_rect.copy()
+        self.text = ["..."]
+        self.text_size = [self.font.size(self.text[0])]
+        self.w = self.text_size[0][0] + 30
+        self.h = self.text_size[0][1] + 30
+        self.fade = 0.0
 
-            self.selection_counter += 1
-            current_id = self.selection_counter
+        self.selection_counter += 1
+        current_id = self.selection_counter
 
-            import threading
+        import threading
 
-            threading.Thread(
-                target=self.process_selection,
-                args=(self.rect.copy(), current_id),
-                daemon=True,
-            ).start()
+        threading.Thread(
+            target=self.process_selection,
+            args=(self.rect.copy(), current_id),
+            daemon=True,
+        ).start()
 
-            self.pressed = False
+        self.pressed = False
 
+    def on_key_press(self, key):
+        """Отслеживать нажатия клавиш для запуска выделения."""
+        if key in (keyboard.Key.ctrl_l, keyboard.Key.ctrl_r):
+            self.key_state.add("ctrl")
+        if key in (keyboard.Key.alt_l, keyboard.Key.alt_r):
+            self.key_state.add("alt")
+
+        if {"ctrl", "alt"}.issubset(self.key_state) and not self.pressed:
+            self.start_selection()
+        return not self.done
+
+    def on_key_release(self, key):
+        """Отслеживать отпускание клавиш для завершения выделения."""
+        if key in (keyboard.Key.ctrl_l, keyboard.Key.ctrl_r):
+            self.key_state.discard("ctrl")
+        if key in (keyboard.Key.alt_l, keyboard.Key.alt_r):
+            self.key_state.discard("alt")
+
+        if ("ctrl" not in self.key_state or "alt" not in self.key_state) and self.pressed:
+            self.finish_selection()
         return not self.done
 
     # Основной цикл ----------------------------------------------------------
