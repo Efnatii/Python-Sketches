@@ -114,6 +114,7 @@ class ImageTranslatorApp:
         self.fade = 1.0
         self.pressed = False
         self.pending_text = None
+        self.current_drag_rect = [0, 0, 0, 0]
         self.selection_counter = 0
         self.time = 0
         self.delta = 0
@@ -136,6 +137,11 @@ class ImageTranslatorApp:
 
         mouse.Listener(on_click=self.on_click, on_move=self.on_move).start()
 
+    def update_drag_rect(self):
+        """Recalculate the current drag rectangle based on ``self.drag_points``."""
+        x1, y1, x2, y2 = self.drag_points
+        self.current_drag_rect = [min(x1, x2), min(y1, y2), abs(x2 - x1), abs(y2 - y1)]
+
     def process_selection(self, selected_rect, proc_id):
         """Recognize text from ``selected_rect`` and translate it."""
         img = Screenshot.grab_image(selected_rect)
@@ -148,6 +154,7 @@ class ImageTranslatorApp:
     def on_move(self, x, y):
         if self.pressed:
             self.drag_points[2:] = [x, y]
+            self.update_drag_rect()
         return not self.done
 
     def on_click(self, x, y, button, pressed):
@@ -155,14 +162,14 @@ class ImageTranslatorApp:
             return not self.done
 
         if pressed:
-            self.rect[0:2] = [x, y]
             self.drag_points[0:4] = [x, y, x, y]
+            self.update_drag_rect()
+            self.rect[0:2] = [x, y]
             self.pressed = True
         else:
             self.drag_points[2:] = [x, y]
-            x1, y1 = self.drag_points[0], self.drag_points[1]
-            x2, y2 = self.drag_points[2], self.drag_points[3]
-            self.rect = [min(x1, x2), min(y1, y2), abs(x2 - x1), abs(y2 - y1)]
+            self.update_drag_rect()
+            self.rect = self.current_drag_rect.copy()
             self.text = ["..."]
             self.text_size = [self.font.size(self.text[0])]
             self.w = self.text_size[0][0] + 30
@@ -215,16 +222,13 @@ class ImageTranslatorApp:
                 pygame.display.flip()
                 self.screen.fill((0, 0, 0))
             else:
-                start_x, start_y, end_x, end_y = self.drag_points
-                left = min(start_x, end_x)
-                top = min(start_y, end_y)
-                width = abs(end_x - start_x)
-                height = abs(end_y - start_y)
+                left, top, width, height = self.current_drag_rect
 
                 Window.set_position(left - 1, top - 1)
                 Window.set_size(width + 2, height + 2)
                 self.screen.fill((0, 0, 0))
 
+                start_x, start_y, end_x, end_y = self.drag_points
                 sx = start_x - (left - 1)
                 sy = start_y - (top - 1)
                 ex = end_x - (left - 1)
