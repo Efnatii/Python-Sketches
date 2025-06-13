@@ -152,22 +152,38 @@ class ImageTranslatorApp:
 
     # Event handlers -----------------------------------------------------
     def on_move(self, x, y):
+        """Track cursor movement while dragging.
+
+        ``pynput`` already provides global coordinates, but we explicitly
+        query the current cursor position via ``win32api`` so that the start
+        and end points are always relative to the entire screen, regardless of
+        the window location.
+        """
         if self.pressed:
-            self.drag_points[2:] = [x, y]
+            sx, sy = win32api.GetCursorPos()
+            self.drag_points[2:] = [sx, sy]
             self.update_drag_rect()
         return not self.done
 
     def on_click(self, x, y, button, pressed):
+        """Handle mouse button events.
+
+        The incoming coordinates from ``pynput`` may already be global, but we
+        re-fetch them using ``win32api.GetCursorPos`` so that the selection is
+        based on absolute screen coordinates.
+        """
         if button != mouse.Button.right:
             return not self.done
 
+        sx, sy = win32api.GetCursorPos()
+
         if pressed:
-            self.drag_points[0:4] = [x, y, x, y]
+            self.drag_points[0:4] = [sx, sy, sx, sy]
             self.update_drag_rect()
-            self.rect[0:2] = [x, y]
+            self.rect[0:2] = [sx, sy]
             self.pressed = True
         else:
-            self.drag_points[2:] = [x, y]
+            self.drag_points[2:] = [sx, sy]
             self.update_drag_rect()
             self.rect = self.current_drag_rect.copy()
             self.text = ["..."]
