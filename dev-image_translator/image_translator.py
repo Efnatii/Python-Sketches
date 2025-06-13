@@ -7,16 +7,29 @@
 Переведённый текст отображается рядом с курсором.
 """
 
-from pynput import mouse, keyboard
-from PIL import Image
+import sys
 import os
+from PIL import Image
 
 import ctypes
 
-import win32gui
-import win32ui
-import win32con
-import win32api
+WINDOWS = sys.platform.startswith("win")
+
+if WINDOWS:
+    from pynput import mouse, keyboard
+    try:
+        import win32gui
+        import win32ui
+        import win32con
+        import win32api
+    except ImportError as exc:  # pragma: no cover - platform specific
+        raise ImportError(
+            "Required Windows dependencies are missing: {}".format(exc)
+        ) from exc
+else:  # pragma: no cover - platform specific
+    raise ImportError(
+        "The image_translator module only supports Windows platforms"
+    )
 
 from math import sin
 
