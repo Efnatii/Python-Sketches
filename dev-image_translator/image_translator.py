@@ -128,6 +128,47 @@ class Window:
                 # Игнорируем, если API недоступно
                 pass
 
+    @classmethod
+    def disable_blur(cls):
+        """Выключить размытие позади окна."""
+        if not WINDOWS or cls.hwnd is None:
+            return
+        try:
+            dwmapi = ctypes.windll.dwmapi
+
+            class DWM_BLURBEHIND(ctypes.Structure):
+                _fields_ = [
+                    ("dwFlags", ctypes.c_uint),
+                    ("fEnable", ctypes.c_bool),
+                    ("hRgnBlur", ctypes.c_void_p),
+                    ("fTransitionOnMaximized", ctypes.c_bool),
+                ]
+
+            blur = DWM_BLURBEHIND(1, False, None, False)
+            dwmapi.DwmEnableBlurBehindWindow(cls.hwnd, ctypes.byref(blur))
+        except Exception:
+            try:
+                class ACCENTPOLICY(ctypes.Structure):
+                    _fields_ = [
+                        ("AccentState", ctypes.c_int),
+                        ("AccentFlags", ctypes.c_int),
+                        ("GradientColor", ctypes.c_int),
+                        ("AnimationId", ctypes.c_int),
+                    ]
+
+                class WINDOWCOMPOSITIONATTRIBDATA(ctypes.Structure):
+                    _fields_ = [
+                        ("Attribute", ctypes.c_int),
+                        ("Data", ctypes.c_void_p),
+                        ("SizeOfData", ctypes.c_size_t),
+                    ]
+
+                accent = ACCENTPOLICY(0, 0, 0, 0)
+                data = WINDOWCOMPOSITIONATTRIBDATA(19, ctypes.byref(accent), ctypes.sizeof(accent))
+                ctypes.windll.user32.SetWindowCompositionAttribute(cls.hwnd, ctypes.byref(data))
+            except Exception:
+                pass
+
 class Screenshot:
     """Функции для создания скриншотов через WinAPI."""
 
@@ -213,7 +254,8 @@ class ImageTranslatorApp:
 
         Window.init(pygame.display.get_wm_info()["window"])
         Window.make_transparent()
-        Window.enable_blur()
+        Window.disable_blur()
+        self.blur_enabled = False
         Window.set_size(self.text_size[0][0] + 30, self.text_size[0][1] + 30)
 
         self.key_state = set()
@@ -226,6 +268,15 @@ class ImageTranslatorApp:
         """Пересчитать текущий прямоугольник выделения на основе ``self.drag_points``."""
         x1, y1, x2, y2 = self.drag_points
         self.current_drag_rect = [min(x1, x2), min(y1, y2), abs(x2 - x1), abs(y2 - y1)]
+
+    def _set_blur(self, enable: bool) -> None:
+        """Включить или отключить размытие в зависимости от ``enable``."""
+        if enable and not self.blur_enabled:
+            Window.enable_blur()
+            self.blur_enabled = True
+        elif not enable and self.blur_enabled:
+            Window.disable_blur()
+            self.blur_enabled = False
 
     def process_selection(self, selected_rect, proc_id):
         """Распознаёт текст из ``selected_rect`` и переводит его."""
@@ -320,6 +371,10 @@ class ImageTranslatorApp:
             self.fade = min(self.fade + 0.002 * self.delta, 1.0)
             blink = sin(self.time * 3.14) / 2
             blink_color = (125 + 130 * blink, 125 + 130 * blink, 125 + 130 * blink, 0)
+
+            self._set_blur(
+                not self.pressed and self.text and self.text != ["..."]
+            )
 
             if self.pending_text is not None:
                 self.text = self.pending_text
