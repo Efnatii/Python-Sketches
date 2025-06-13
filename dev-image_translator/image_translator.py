@@ -1,9 +1,10 @@
-"""Utility for translating text from screen selections.
+"""\
+Утилита для перевода текста, выделяемого на экране.
 
-The module provides a small window that follows the cursor. When the user
-selects a rectangular region with the right mouse button, the contents of the
-region are captured, recognized via OCR and translated. The translated text is
-displayed near the cursor.
+Модуль предоставляет небольшое окно, следующее за курсором. Когда
+пользователь правой кнопкой мыши выделяет прямоугольную область,
+её содержимое захватывается, распознаётся через OCR и переводится.
+Переведённый текст отображается рядом с курсором.
 """
 
 from pynput import mouse
@@ -25,34 +26,34 @@ pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tessera
 try:
     ctypes.windll.user32.SetProcessDPIAware()
 except Exception:
-    # Fallback for older Windows versions or missing attribute
+    # Запасной вариант для старых версий Windows или отсутствующего атрибута
     pass
 
 from translate import Translator
 
 class Window:
-    """Helper for manipulating the pygame window using WinAPI."""
+    """Вспомогательный класс для управления окном pygame через WinAPI."""
 
     hwnd = None
 
     @classmethod
     def init(cls, hwnd):
-        """Store window handle for further operations."""
+        """Сохраняет дескриптор окна для последующих операций."""
         cls.hwnd = hwnd
 
     @classmethod
     def set_position(cls, x, y):
-        """Move the window to the specified position."""
+        """Перемещает окно в указанную позицию."""
         win32gui.SetWindowPos(cls.hwnd, win32con.HWND_TOPMOST, x, y, 0, 0, win32con.SWP_NOSIZE)
 
     @classmethod
     def set_size(cls, w, h):
-        """Resize the window without moving it."""
+        """Изменяет размер окна без перемещения."""
         win32gui.SetWindowPos(cls.hwnd, win32con.HWND_TOPMOST, 0, 0, w, h, win32con.SWP_NOMOVE)
 
     @classmethod
     def make_transparent(cls, color=(0, 0, 0)):
-        """Make the window transparent for a specific color key."""
+        """Делает окно прозрачным по заданному цвету."""
         win32gui.SetWindowLong(
             cls.hwnd,
             win32con.GWL_EXSTYLE,
@@ -61,11 +62,11 @@ class Window:
         win32gui.SetLayeredWindowAttributes(cls.hwnd, win32api.RGB(*color), 0, win32con.LWA_COLORKEY)
 
 class Screenshot:
-    """Screenshot utilities using WinAPI."""
+    """Функции для создания скриншотов через WinAPI."""
 
     @classmethod
     def grab(cls, rect, bmp_filename=r".\screenshots\screenshot.bmp", hwnd=0):
-        """Capture a rectangular region of the screen and save it to ``bmp_filename``."""
+        """Захватывает прямоугольную область экрана и сохраняет её в ``bmp_filename``."""
         window_dc = win32gui.GetWindowDC(hwnd)
         dc_object = win32ui.CreateDCFromHandle(window_dc)
         compatible_dc = dc_object.CreateCompatibleDC()
@@ -85,7 +86,7 @@ class Screenshot:
 
     @classmethod
     def grab_image(cls, rect, hwnd=0):
-        """Return a :class:`PIL.Image` of the screen region without writing to disk."""
+        """Возвращает :class:`PIL.Image` выбранной области экрана без записи на диск."""
         window_dc = win32gui.GetWindowDC(hwnd)
         dc_object = win32ui.CreateDCFromHandle(window_dc)
         compatible_dc = dc_object.CreateCompatibleDC()
@@ -107,14 +108,14 @@ class Screenshot:
         return Image.frombuffer('RGB', (bmp_info['bmWidth'], bmp_info['bmHeight']), bmp_str, 'raw', 'BGRX', 0, 1)
 
 class ImageTranslatorApp:
-    """Interactive application for translating screen selections."""
+    """Интерактивное приложение для перевода выделений на экране."""
 
     def __init__(self, debug=False):
         import pygame
 
         self.debug = debug
 
-        # Runtime state
+        # Текущее состояние
         self.cursor_position = [0, 0]
         self.rect = [0, 0, 0, 0]
         self.drag_points = [0, 0, 0, 0]
@@ -131,7 +132,7 @@ class ImageTranslatorApp:
 
         self.translator = Translator(from_lang="en", to_lang="ru")
 
-        # Pygame setup
+        # Настройка Pygame
         pygame.init()
         pygame.font.init()
         self.pygame = pygame
@@ -148,12 +149,12 @@ class ImageTranslatorApp:
         mouse.Listener(on_click=self.on_click, on_move=self.on_move).start()
 
     def update_drag_rect(self):
-        """Recalculate the current drag rectangle based on ``self.drag_points``."""
+        """Пересчитать текущий прямоугольник выделения на основе ``self.drag_points``."""
         x1, y1, x2, y2 = self.drag_points
         self.current_drag_rect = [min(x1, x2), min(y1, y2), abs(x2 - x1), abs(y2 - y1)]
 
     def process_selection(self, selected_rect, proc_id):
-        """Recognize text from ``selected_rect`` and translate it."""
+        """Распознаёт текст из ``selected_rect`` и переводит его."""
         img = Screenshot.grab_image(selected_rect)
         if self.debug:
             try:
@@ -165,14 +166,14 @@ class ImageTranslatorApp:
         if proc_id == self.selection_counter:
             self.pending_text = result
 
-    # Event handlers -----------------------------------------------------
+    # Обработчики событий -----------------------------------------------------
     def on_move(self, x, y):
-        """Track cursor movement while dragging.
+        """Отслеживать перемещение курсора во время выделения.
 
-        ``pynput`` already provides global coordinates, but we explicitly
-        query the current cursor position via ``win32api`` so that the start
-        and end points are always relative to the entire screen, regardless of
-        the window location.
+        ``pynput`` уже отдаёт глобальные координаты, но мы дополнительно
+        запрашиваем положение курсора через ``win32api``, чтобы начальная и
+        конечная точки всегда были относительно всего экрана, независимо
+        от положения окна.
         """
         if self.pressed:
             sx, sy = win32api.GetCursorPos()
@@ -181,11 +182,11 @@ class ImageTranslatorApp:
         return not self.done
 
     def on_click(self, x, y, button, pressed):
-        """Handle mouse button events.
+        """Обрабатывать события нажатия кнопок мыши.
 
-        The incoming coordinates from ``pynput`` may already be global, but we
-        re-fetch them using ``win32api.GetCursorPos`` so that the selection is
-        based on absolute screen coordinates.
+        Координаты от ``pynput`` могут быть уже глобальными, но мы
+        запрашиваем их через ``win32api.GetCursorPos``, чтобы выделение
+        всегда основывалось на абсолютных координатах экрана.
         """
         if button != mouse.Button.right:
             return not self.done
@@ -222,7 +223,7 @@ class ImageTranslatorApp:
 
         return not self.done
 
-    # Main loop ----------------------------------------------------------
+    # Основной цикл ----------------------------------------------------------
     def run(self):
         pygame = self.pygame
         while not self.done:
@@ -242,9 +243,9 @@ class ImageTranslatorApp:
                 self.pending_text = None
 
             if not self.pressed:
-                # Move the translation window slightly further away from the
-                # cursor so it does not obstruct it. The previous offset was
-                # (12, 14); shift it an additional 10 pixels diagonally.
+                # Отодвигаем окно перевода немного дальше от курсора,
+                # чтобы оно не перекрывало его. Ранее смещение было (12, 14);
+                # добавляем ещё по 10 пикселей по диагонали.
                 Window.set_position(self.cursor_position[0] + 22, self.cursor_position[1] + 24)
                 Window.set_size(self.w, self.h)
 
@@ -281,7 +282,7 @@ class ImageTranslatorApp:
 
 
 def main(argv=None):
-    """Entry point for running as a script."""
+    """Точка входа при запуске как скрипта."""
     import argparse
 
     parser = argparse.ArgumentParser(description="Translate screen selections")
