@@ -101,8 +101,10 @@ class Screenshot:
 class ImageTranslatorApp:
     """Interactive application for translating screen selections."""
 
-    def __init__(self):
+    def __init__(self, debug=False):
         import pygame
+
+        self.debug = debug
 
         # Runtime state
         self.cursor_position = [0, 0]
@@ -145,6 +147,11 @@ class ImageTranslatorApp:
     def process_selection(self, selected_rect, proc_id):
         """Recognize text from ``selected_rect`` and translate it."""
         img = Screenshot.grab_image(selected_rect)
+        if self.debug:
+            try:
+                img.show()
+            except Exception:
+                pass
         raw_text = pytesseract.image_to_string(img, lang="eng").strip()
         result = self.translator.translate(raw_text).split("\n")
         if proc_id == self.selection_counter:
@@ -262,9 +269,19 @@ class ImageTranslatorApp:
         pygame.quit()
 
 
-def main():
+def main(argv=None):
     """Entry point for running as a script."""
-    ImageTranslatorApp().run()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Translate screen selections")
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="show captured screenshots using PIL",
+    )
+    args = parser.parse_args(argv)
+
+    ImageTranslatorApp(debug=args.debug).run()
 
 
 if __name__ == "__main__":
