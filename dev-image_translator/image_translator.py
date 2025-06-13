@@ -56,11 +56,10 @@ class Window:
     def make_transparent(cls, color=(0, 0, 0), alpha=255):
         """Делает окно прозрачным по заданному цвету.
 
-        ``alpha`` оставлен для обратной совместимости. Значение передаётся
-        в :func:`SetLayeredWindowAttributes`, хотя используется только флаг
-        ``LWA_COLORKEY``. Это позволяет сохранить прежний интерфейс, не
-        устанавливая постоянную прозрачность и учитывая альфа каждого
-        пикселя.
+        ``alpha`` оставлен для обратной совместимости, но на данный момент
+        окно всегда получает значение прозрачности ``255`` и флаги
+        ``LWA_COLORKEY | LWA_ALPHA``. Это позволяет использовать
+        полупрозрачные поверхности, созданные в ``pygame``.
         """
         win32gui.SetWindowLong(
             cls.hwnd,
@@ -70,8 +69,8 @@ class Window:
         win32gui.SetLayeredWindowAttributes(
             cls.hwnd,
             win32api.RGB(*color),
-            alpha,  # параметр игнорируется без флага LWA_ALPHA
-            win32con.LWA_COLORKEY,
+            255,
+            win32con.LWA_COLORKEY | win32con.LWA_ALPHA,
         )
 
 class Screenshot:
