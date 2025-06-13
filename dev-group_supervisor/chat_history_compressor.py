@@ -1,4 +1,6 @@
-"""Utilities for compressing long chat histories using DeepSeek Reasoner."""
+"""\
+Утилиты для сжатия длинной истории переписки с использованием DeepSeek Reasoner.
+"""
 
 from __future__ import annotations
 
@@ -11,7 +13,9 @@ import tiktoken
 
 
 class ChatHistoryCompressor:
-    """Compress chat history recursively using the DeepSeek Reasoner API."""
+    """\
+    Рекурсивно сжимает историю чата с помощью API DeepSeek Reasoner.
+    """
 
     def __init__(self, api_key: str, model: str = "deepseek-chat") -> None:
         self.api_key = api_key
@@ -20,7 +24,9 @@ class ChatHistoryCompressor:
         self._log = logging.getLogger(self.__class__.__name__)
 
     def _count_tokens(self, messages: List[Dict[str, str]]) -> int:
-        """Count tokens for a list of OpenAI style messages."""
+        """\
+        Подсчитать количество токенов в списке сообщений формата OpenAI.
+        """
         tokens_per_message = 4
         tokens_per_name = -1
         total = 0
@@ -73,7 +79,10 @@ class ChatHistoryCompressor:
         return {"role": "system", "content": content.strip()}
 
     def compress_messages(self, messages: List[Dict[str, str]], max_model_tokens: int) -> List[Dict[str, str]]:
-        """Recursively compress ``messages`` to fit under 2/3 of ``max_model_tokens``."""
+        """\
+        Рекурсивно сжимает ``messages``, чтобы результат занимал не более
+        двух третей от ``max_model_tokens``.
+        """
         limit = math.floor(max_model_tokens * (2 / 3))
         compressed = list(messages)
         while self._count_tokens(compressed) > limit:

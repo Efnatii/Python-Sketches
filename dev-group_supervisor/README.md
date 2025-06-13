@@ -1,8 +1,8 @@
 # dev-group_supervisor
 
-Utilities for automating routine tasks around development. The
-`chat_history_compressor.py` module provides a `ChatHistoryCompressor`
-class which uses the DeepSeek Reasoner API to recursively compress a
-long OpenAI chat history. It keeps important dates and numbers intact
-while summarising each block until the history fits within two thirds
-of the target model token limit.
+Утилиты для автоматизации рутинных задач разработки. Модуль
+`chat_history_compressor.py` предоставляет класс `ChatHistoryCompressor`,
+который использует API DeepSeek Reasoner для рекурсивного сжатия длинной
+истории чата OpenAI. Он сохраняет важные даты и числа и сокращает
+каждый блок, пока история не уместится в две трети лимита токенов
+целевой модели.
