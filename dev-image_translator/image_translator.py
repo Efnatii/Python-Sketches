@@ -52,14 +52,19 @@ class Window:
         win32gui.SetWindowPos(cls.hwnd, win32con.HWND_TOPMOST, 0, 0, w, h, win32con.SWP_NOMOVE)
 
     @classmethod
-    def make_transparent(cls, color=(0, 0, 0)):
-        """Делает окно прозрачным по заданному цвету."""
+    def make_transparent(cls, color=(0, 0, 0), alpha=255):
+        """Делает окно прозрачным по заданному цвету и альфе."""
         win32gui.SetWindowLong(
             cls.hwnd,
             win32con.GWL_EXSTYLE,
             win32gui.GetWindowLong(cls.hwnd, win32con.GWL_EXSTYLE) | win32con.WS_EX_LAYERED,
         )
-        win32gui.SetLayeredWindowAttributes(cls.hwnd, win32api.RGB(*color), 0, win32con.LWA_COLORKEY)
+        win32gui.SetLayeredWindowAttributes(
+            cls.hwnd,
+            win32api.RGB(*color),
+            alpha,
+            win32con.LWA_COLORKEY | win32con.LWA_ALPHA,
+        )
 
 class Screenshot:
     """Функции для создания скриншотов через WinAPI."""
@@ -136,7 +141,7 @@ class ImageTranslatorApp:
         pygame.init()
         pygame.font.init()
         self.pygame = pygame
-        self.screen = pygame.display.set_mode((2000, 2000), pygame.NOFRAME)
+        self.screen = pygame.display.set_mode((2000, 2000), pygame.NOFRAME | pygame.SRCALPHA)
         self.font = pygame.font.SysFont("sans serif", 20)
         self.clock = pygame.time.Clock()
 
@@ -254,8 +259,10 @@ class ImageTranslatorApp:
             if self.pending_text is not None:
                 self.text = self.pending_text
                 self.text_size = [self.font.size(t) for t in self.text]
-                self.w = max(s[0] for s in self.text_size) + 20
-                self.h = sum(s[1] for s in self.text_size) + 10
+                text_height = sum(s[1] for s in self.text_size)
+                text_width = max(s[0] for s in self.text_size)
+                self.w = text_width + 20
+                self.h = text_height + 20
                 Window.set_size(self.w, self.h)
                 self.fade = 0.0
                 self.pending_text = None
@@ -272,19 +279,23 @@ class ImageTranslatorApp:
                     bg.fill((32, 32, 32, int(200 * self.fade)))
                     self.screen.blit(bg, (0, 0))
 
-                for idx, line in enumerate(self.text):
-                    surf = self.font.render(line, False, blink_color)
-                    surf.set_alpha(int(255 * self.fade))
-                    self.screen.blit(surf, (10, idx * self.text_size[idx][1]))
+                    total_h = sum(s[1] for s in self.text_size)
+                    y = (self.h - total_h) // 2
+                    for idx, (line, size) in enumerate(zip(self.text, self.text_size)):
+                        surf = self.font.render(line, False, blink_color)
+                        surf.set_alpha(int(255 * self.fade))
+                        x = (self.w - size[0]) // 2
+                        self.screen.blit(surf, (x, y))
+                        y += size[1]
 
                 pygame.display.flip()
-                self.screen.fill((0, 0, 0))
+                self.screen.fill((0, 0, 0, 0))
             else:
                 left, top, width, height = self.current_drag_rect
 
                 Window.set_position(left - 1, top - 1)
                 Window.set_size(width + 2, height + 2)
-                self.screen.fill((0, 0, 0))
+                self.screen.fill((0, 0, 0, 0))
 
                 pygame.draw.rect(
                     self.screen,
