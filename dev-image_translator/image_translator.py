@@ -35,7 +35,12 @@ from math import sin
 
 import pytesseract
 
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+# Позволяет переопределить путь к исполняемому файлу Tesseract через
+# переменную окружения ``TESSERACT_CMD``. По умолчанию используется
+# стандартный путь установки на Windows.
+pytesseract.pytesseract.tesseract_cmd = os.environ.get(
+    "TESSERACT_CMD", r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+)
 
 try:
     ctypes.windll.user32.SetProcessDPIAware()
@@ -440,7 +445,14 @@ def main(argv=None):
         action="store_true",
         help="show captured screenshots using PIL",
     )
+    parser.add_argument(
+        "--tesseract-path",
+        help="path to tesseract executable",
+    )
     args = parser.parse_args(argv)
+
+    if args.tesseract_path:
+        pytesseract.pytesseract.tesseract_cmd = args.tesseract_path
 
     ImageTranslatorApp(debug=args.debug).run()
 

@@ -17,7 +17,9 @@
 
 - Windows (используется WinAPI через `pywin32`).
 - Для размытия фона требуется Windows 10 или новее.
-- Установленный Tesseract OCR. По умолчанию путь к исполняемому файлу ожидается `C:\\Program Files\\Tesseract-OCR\\tesseract.exe`.
+- Установленный Tesseract OCR. По умолчанию путь к исполняемому файлу ожидается
+  `C:\\Program Files\\Tesseract-OCR\\tesseract.exe`. Его можно изменить через
+  аргумент `--tesseract-path` или переменную окружения `TESSERACT_CMD`.
 - Python‑пакеты из файла `requirements.txt`.
 
 Установите их командой:
