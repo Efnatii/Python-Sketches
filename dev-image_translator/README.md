@@ -12,12 +12,12 @@
 
 - Windows (используется WinAPI через `pywin32`). Для размытия фона нужна Windows 10+.
 - Tesseract OCR. Путь можно задать аргументом `--tesseract-path` или переменной `TESSERACT_CMD`.
-- Зависимости из `requirements.txt`.
+- Зависимости из `requirements.txt` в этом каталоге.
 
 Установите их командой:
 
 ```bash
-pip install -r requirements.txt
+pip install -r dev-image_translator/requirements.txt
 ```
 
 ## Запуск
