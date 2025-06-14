@@ -6,3 +6,4 @@ translate
 pywin32
 requests
 tiktoken
+python-dotenv

@@ -227,6 +227,9 @@ class _StabilityAI_StableImage_Generate:
 
 if __name__ == "__main__":
     import os
+    from dotenv import load_dotenv
+
+    load_dotenv()  # Загружаем переменные из .env при наличии
 
     api = _StabilityAI_StableImage_Generate(api_key=os.environ['_STABILITYAI_API_KEY_1'])
 
