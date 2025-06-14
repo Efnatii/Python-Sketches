@@ -12,12 +12,12 @@
 ## Установка зависимостей
 
 Перед запуском скриптов рекомендуется создать виртуальное окружение и
-установить необходимые пакеты из `requirements.txt`:
+установить зависимости из `requirements.txt` соответствующего подпроекта:
 
 ```bash
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r dev-image_translator/requirements.txt  # пример для одного проекта
 ```
 
 Пакет `pywin32` обязателен только для Windows и может не устанавливаться на
