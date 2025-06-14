@@ -3,11 +3,14 @@ from enum import Enum
 from typing import Optional, Union, BinaryIO
 import io
 import os
+import logging
 
 try:
     from PIL import Image as PILImage
 except ImportError:
     PILImage = None
+
+log = logging.getLogger(__name__)
 
 class AspectRatio(Enum):
     """Варианты пропорций для генерации изображений."""
@@ -168,28 +171,78 @@ class _StabilityAI_StableImage_Generate:
                     # Передан путь до файла
                     with open(image, "rb") as f:
                         files = {"image": f}
-                        response = requests.post(url, headers=headers, files=files, data=data)
+                        try:
+                            response = requests.post(
+                                url,
+                                headers=headers,
+                                files=files,
+                                data=data,
+                                timeout=30,
+                            )
+                        except requests.RequestException as exc:
+                            log.error("Ошибка запроса к StabilityAI: %s", exc)
+                            raise
                 elif isinstance(image, bytes):
                     # Переданы байты
                     files = {"image": ("image", image)}
-                    response = requests.post(url, headers=headers, files=files, data=data)
+                    try:
+                        response = requests.post(
+                            url,
+                            headers=headers,
+                            files=files,
+                            data=data,
+                            timeout=30,
+                        )
+                    except requests.RequestException as exc:
+                        log.error("Ошибка запроса к StabilityAI: %s", exc)
+                        raise
                 elif hasattr(image, "read"):
                     # Файловый объект (например io.BytesIO)
                     files = {"image": ("image", image.read())}
-                    response = requests.post(url, headers=headers, files=files, data=data)
+                    try:
+                        response = requests.post(
+                            url,
+                            headers=headers,
+                            files=files,
+                            data=data,
+                            timeout=30,
+                        )
+                    except requests.RequestException as exc:
+                        log.error("Ошибка запроса к StabilityAI: %s", exc)
+                        raise
                 elif PILImage and isinstance(image, PILImage.Image):
                     # Объект PIL.Image (Pillow)
                     buf = io.BytesIO()
                     image.save(buf, format="PNG")
                     buf.seek(0)
                     files = {"image": ("image", buf.read())}
-                    response = requests.post(url, headers=headers, files=files, data=data)
+                    try:
+                        response = requests.post(
+                            url,
+                            headers=headers,
+                            files=files,
+                            data=data,
+                            timeout=30,
+                        )
+                    except requests.RequestException as exc:
+                        log.error("Ошибка запроса к StabilityAI: %s", exc)
+                        raise
                 else:
                     raise ValueError("Параметр image должен быть str (путь), bytes, BinaryIO или PIL.Image.Image")
             else:
                 # Для чисто текстовой генерации по требованиям API
                 files = {"none": ""}
-                response = requests.post(url, headers=headers, files=files, data=data)
+                try:
+                    response = requests.post(
+                        url,
+                        headers=headers,
+                        files=files,
+                        data=data,
+                        timeout=30,
+                    )
+                except requests.RequestException as exc:
+                    log.error("Ошибка запроса к StabilityAI: %s", exc)
+                    raise
 
             if response.status_code == 200:
                 current_save = None

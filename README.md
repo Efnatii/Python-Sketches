@@ -13,6 +13,18 @@
 pip install -r requirements.txt
 ```
 
+## Пример использования ChatHistoryCompressor
+
+```python
+from dev_group_supervisor.chat_history_compressor import ChatHistoryCompressor
+
+compressor = ChatHistoryCompressor(api_key="YOUR_TOKEN")
+try:
+    result = compressor.compress_messages([{"role": "user", "content": "Привет"}], max_model_tokens=4096)
+except requests.RequestException as exc:
+    print("Ошибка запроса:", exc)
+```
+
 ## Лицензия
 
 Исходный код распространяется под лицензией MIT. Подробности в файле `LICENSE`.

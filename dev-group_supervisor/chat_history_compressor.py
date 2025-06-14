@@ -72,8 +72,12 @@ class ChatHistoryCompressor:
             "temperature": 0.1,
         }
         self._log.debug("Requesting DeepSeek compression")
-        resp = requests.post(url, headers=headers, json=payload, timeout=60)
-        resp.raise_for_status()
+        try:
+            resp = requests.post(url, headers=headers, json=payload, timeout=30)
+            resp.raise_for_status()
+        except requests.RequestException as exc:
+            self._log.error("Ошибка запроса к DeepSeek: %s", exc)
+            raise
         data = resp.json()
         content = data["choices"][0]["message"]["content"]
         return {"role": "system", "content": content.strip()}
