@@ -1,14 +1,13 @@
-"""\
-Утилита для перевода текста, выделяемого на экране.
+"""Utility for translating text selected on the screen.
 
-Модуль предоставляет небольшое окно, следующее за курсором. Когда
-пользователь правой кнопкой мыши выделяет прямоугольную область,
-её содержимое захватывается, распознаётся через OCR и переводится.
-Переведённый текст отображается рядом с курсором.
+The module displays a small window following the cursor. When the user selects
+a rectangular area with the mouse, its contents are captured, recognized via
+OCR and translated. The translated text appears near the cursor.
 """
 
 import sys
 import os
+from typing import Sequence
 from PIL import Image
 
 import ctypes
@@ -46,33 +45,34 @@ except Exception:
 from translate import Translator
 
 class Window:
-    """Вспомогательный класс для управления окном pygame через WinAPI."""
+    """Helper class for controlling the pygame window via the WinAPI."""
 
     hwnd = None
 
     @classmethod
-    def init(cls, hwnd):
-        """Сохраняет дескриптор окна для последующих операций."""
+    def init(cls, hwnd: int) -> None:
+        """Store window handle for further operations."""
         cls.hwnd = hwnd
 
     @classmethod
-    def set_position(cls, x, y):
-        """Перемещает окно в указанную позицию."""
+    def set_position(cls, x: int, y: int) -> None:
+        """Move the window to the given position."""
         win32gui.SetWindowPos(cls.hwnd, win32con.HWND_TOPMOST, x, y, 0, 0, win32con.SWP_NOSIZE)
 
     @classmethod
-    def set_size(cls, w, h):
-        """Изменяет размер окна без перемещения."""
+    def set_size(cls, w: int, h: int) -> None:
+        """Change the window size without moving it."""
         win32gui.SetWindowPos(cls.hwnd, win32con.HWND_TOPMOST, 0, 0, w, h, win32con.SWP_NOMOVE)
 
     @classmethod
-    def make_transparent(cls, color=(0, 0, 0), alpha=255):
-        """Делает окно прозрачным по заданному цвету.
+    def make_transparent(
+        cls, color: tuple[int, int, int] = (0, 0, 0), alpha: int = 255
+    ) -> None:
+        """Make the window transparent using the given color.
 
-        ``alpha`` оставлен для обратной совместимости, но на данный момент
-        окно всегда получает значение прозрачности ``255`` и флаги
-        ``LWA_COLORKEY | LWA_ALPHA``. Это позволяет использовать
-        полупрозрачные поверхности, созданные в ``pygame``.
+        ``alpha`` is kept for backward compatibility but the window is always
+        set to fully opaque with ``LWA_COLORKEY | LWA_ALPHA`` which allows using
+        semi-transparent ``pygame`` surfaces.
         """
         win32gui.SetWindowLong(
             cls.hwnd,
@@ -87,8 +87,8 @@ class Window:
         )
 
     @classmethod
-    def enable_blur(cls):
-        """Включить размытие позади окна, если поддерживается системой."""
+    def enable_blur(cls) -> None:
+        """Enable blur behind the window if supported by the system."""
         if not WINDOWS or cls.hwnd is None:
             return
         try:
@@ -129,8 +129,8 @@ class Window:
                 pass
 
     @classmethod
-    def disable_blur(cls):
-        """Выключить размытие позади окна."""
+    def disable_blur(cls) -> None:
+        """Disable blur behind the window."""
         if not WINDOWS or cls.hwnd is None:
             return
         try:
@@ -170,11 +170,16 @@ class Window:
                 pass
 
 class Screenshot:
-    """Функции для создания скриншотов через WinAPI."""
+    """Utility functions for creating screenshots via the WinAPI."""
 
     @classmethod
-    def grab(cls, rect, bmp_filename=None, hwnd=0):
-        """Захватывает прямоугольную область экрана и сохраняет её в ``bmp_filename``."""
+    def grab(
+        cls,
+        rect: Sequence[int],
+        bmp_filename: str | None = None,
+        hwnd: int = 0,
+    ) -> None:
+        """Capture a rectangular region of the screen and save it to ``bmp_filename``."""
         if bmp_filename is None:
             bmp_filename = os.path.join(os.path.dirname(__file__), "screenshots", "screenshot.bmp")
         window_dc = win32gui.GetWindowDC(hwnd)
@@ -195,8 +200,8 @@ class Screenshot:
         win32gui.DeleteObject(data_bitmap.GetHandle())
 
     @classmethod
-    def grab_image(cls, rect, hwnd=0):
-        """Возвращает :class:`PIL.Image` выбранной области экрана без записи на диск."""
+    def grab_image(cls, rect: Sequence[int], hwnd: int = 0) -> Image.Image:
+        """Return a :class:`PIL.Image` of the selected screen area without saving."""
         window_dc = win32gui.GetWindowDC(hwnd)
         dc_object = win32ui.CreateDCFromHandle(window_dc)
         compatible_dc = dc_object.CreateCompatibleDC()
@@ -218,9 +223,9 @@ class Screenshot:
         return Image.frombuffer('RGB', (bmp_info['bmWidth'], bmp_info['bmHeight']), bmp_str, 'raw', 'BGRX', 0, 1)
 
 class ImageTranslatorApp:
-    """Интерактивное приложение для перевода выделений на экране."""
+    """Interactive application for translating selections on the screen."""
 
-    def __init__(self, debug=False):
+    def __init__(self, debug: bool = False) -> None:
         import pygame
 
         self.debug = debug
@@ -264,13 +269,13 @@ class ImageTranslatorApp:
         ).start()
         mouse.Listener(on_move=self.on_move).start()
 
-    def update_drag_rect(self):
-        """Пересчитать текущий прямоугольник выделения на основе ``self.drag_points``."""
+    def update_drag_rect(self) -> None:
+        """Recalculate ``self.current_drag_rect`` from ``self.drag_points``."""
         x1, y1, x2, y2 = self.drag_points
         self.current_drag_rect = [min(x1, x2), min(y1, y2), abs(x2 - x1), abs(y2 - y1)]
 
     def _set_blur(self, enable: bool) -> None:
-        """Включить или отключить размытие в зависимости от ``enable``."""
+        """Enable or disable blur depending on ``enable``."""
         if enable and not self.blur_enabled:
             Window.enable_blur()
             self.blur_enabled = True
@@ -278,8 +283,8 @@ class ImageTranslatorApp:
             Window.disable_blur()
             self.blur_enabled = False
 
-    def process_selection(self, selected_rect, proc_id):
-        """Распознаёт текст из ``selected_rect`` и переводит его."""
+    def process_selection(self, selected_rect: Sequence[int], proc_id: int) -> None:
+        """Recognize text from ``selected_rect`` and translate it."""
         img = Screenshot.grab_image(selected_rect)
         if self.debug:
             try:
@@ -292,13 +297,12 @@ class ImageTranslatorApp:
             self.pending_text = result
 
     # Обработчики событий -----------------------------------------------------
-    def on_move(self, x, y):
-        """Отслеживать перемещение курсора во время выделения.
+    def on_move(self, x: int, y: int) -> bool:
+        """Track mouse movement during selection.
 
-        ``pynput`` уже отдаёт глобальные координаты, но мы дополнительно
-        запрашиваем положение курсора через ``win32api``, чтобы начальная и
-        конечная точки всегда были относительно всего экрана, независимо
-        от положения окна.
+        ``pynput`` already provides global coordinates, but we additionally
+        query the cursor position via ``win32api`` so that start and end points
+        are always relative to the entire screen.
         """
         if self.pressed:
             sx, sy = win32api.GetCursorPos()
@@ -307,16 +311,16 @@ class ImageTranslatorApp:
         return not self.done
 
 
-    def start_selection(self):
-        """Начать выделение при нажатии горячих клавиш."""
+    def start_selection(self) -> None:
+        """Begin a selection when the hotkeys are pressed."""
         sx, sy = win32api.GetCursorPos()
         self.drag_points[0:4] = [sx, sy, sx, sy]
         self.update_drag_rect()
         self.rect[0:2] = [sx, sy]
         self.pressed = True
 
-    def finish_selection(self):
-        """Завершить выделение после отпускания горячих клавиш."""
+    def finish_selection(self) -> None:
+        """Finish the selection after the hotkeys are released."""
         sx, sy = win32api.GetCursorPos()
         self.drag_points[2:] = [sx, sy]
         self.update_drag_rect()
@@ -340,8 +344,8 @@ class ImageTranslatorApp:
 
         self.pressed = False
 
-    def on_key_press(self, key):
-        """Отслеживать нажатия клавиш для запуска выделения."""
+    def on_key_press(self, key) -> bool:
+        """Handle key presses to start a selection."""
         if key in (keyboard.Key.ctrl_l, keyboard.Key.ctrl_r):
             self.key_state.add("ctrl")
         if key in (keyboard.Key.alt_l, keyboard.Key.alt_r):
@@ -351,8 +355,8 @@ class ImageTranslatorApp:
             self.start_selection()
         return not self.done
 
-    def on_key_release(self, key):
-        """Отслеживать отпускание клавиш для завершения выделения."""
+    def on_key_release(self, key) -> bool:
+        """Handle key releases to finish the selection."""
         if key in (keyboard.Key.ctrl_l, keyboard.Key.ctrl_r):
             self.key_state.discard("ctrl")
         if key in (keyboard.Key.alt_l, keyboard.Key.alt_r):
@@ -363,7 +367,7 @@ class ImageTranslatorApp:
         return not self.done
 
     # Основной цикл ----------------------------------------------------------
-    def run(self):
+    def run(self) -> None:
         pygame = self.pygame
         while not self.done:
             self.cursor_position = win32api.GetCursorPos()
@@ -430,8 +434,8 @@ class ImageTranslatorApp:
         pygame.quit()
 
 
-def main(argv=None):
-    """Точка входа при запуске как скрипта."""
+def main(argv: Sequence[str] | None = None) -> None:
+    """Entry point when executed as a script."""
     import argparse
 
     parser = argparse.ArgumentParser(description="Translate screen selections")

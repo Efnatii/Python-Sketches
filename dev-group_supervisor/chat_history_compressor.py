@@ -1,6 +1,4 @@
-"""\
-Утилиты для сжатия длинной истории переписки с использованием DeepSeek Reasoner.
-"""
+"""Utilities for compressing long chat histories using DeepSeek Reasoner."""
 
 from __future__ import annotations
 
@@ -13,9 +11,7 @@ import tiktoken
 
 
 class ChatHistoryCompressor:
-    """\
-    Рекурсивно сжимает историю чата с помощью API DeepSeek Reasoner.
-    """
+    """Recursively compress chat history with the DeepSeek Reasoner API."""
 
     def __init__(self, api_key: str, model: str = "deepseek-chat") -> None:
         self.api_key = api_key
@@ -24,9 +20,7 @@ class ChatHistoryCompressor:
         self._log = logging.getLogger(self.__class__.__name__)
 
     def _count_tokens(self, messages: List[Dict[str, str]]) -> int:
-        """\
-        Подсчитать количество токенов в списке сообщений формата OpenAI.
-        """
+        """Count tokens in a list of OpenAI-formatted messages."""
         tokens_per_message = 4
         tokens_per_name = -1
         total = 0
@@ -38,7 +32,10 @@ class ChatHistoryCompressor:
                     total += tokens_per_name
         return total + 2
 
-    def _split_blocks(self, messages: List[Dict[str, str]], block_token_limit: int) -> List[List[Dict[str, str]]]:
+    def _split_blocks(
+        self, messages: List[Dict[str, str]], block_token_limit: int
+    ) -> List[List[Dict[str, str]]]:
+        """Split messages into blocks not exceeding ``block_token_limit`` tokens."""
         blocks: List[List[Dict[str, str]]] = []
         current: List[Dict[str, str]] = []
         tokens = 0
@@ -56,6 +53,7 @@ class ChatHistoryCompressor:
         return blocks
 
     def _compress_block(self, block: List[Dict[str, str]]) -> Dict[str, str]:
+        """Compress a single block of messages using DeepSeek."""
         text = "\n".join(f"{m['role']}: {m['content']}" for m in block)
         prompt = (
             "Сожми следующие сообщения без потери смысла и важной информации дат "
@@ -78,11 +76,10 @@ class ChatHistoryCompressor:
         content = data["choices"][0]["message"]["content"]
         return {"role": "system", "content": content.strip()}
 
-    def compress_messages(self, messages: List[Dict[str, str]], max_model_tokens: int) -> List[Dict[str, str]]:
-        """\
-        Рекурсивно сжимает ``messages``, чтобы результат занимал не более
-        двух третей от ``max_model_tokens``.
-        """
+    def compress_messages(
+        self, messages: List[Dict[str, str]], max_model_tokens: int
+    ) -> List[Dict[str, str]]:
+        """Recursively compress ``messages`` to fit within two thirds of ``max_model_tokens``."""
         limit = math.floor(max_model_tokens * (2 / 3))
         compressed = list(messages)
         while self._count_tokens(compressed) > limit:

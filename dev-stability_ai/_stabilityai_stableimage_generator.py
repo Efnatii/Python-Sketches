@@ -10,7 +10,7 @@ except ImportError:
     PILImage = None
 
 class AspectRatio(Enum):
-    """Варианты пропорций для генерации изображений."""
+    """Aspect ratio options for image generation."""
     AR_16_9 = "16:9"
     AR_1_1 = "1:1"
     AR_21_9 = "21:9"
@@ -22,19 +22,19 @@ class AspectRatio(Enum):
     AR_9_21 = "9:21"
 
 class OutputFormat(Enum):
-    """Варианты формата вывода изображения."""
+    """Available output image formats."""
     JPEG = "jpeg"
     PNG = "png"
     WEBP = "webp"
 
 class ModelType(Enum):
-    """Тип модели генерации Stable Diffusion."""
+    """Stable Diffusion model type."""
     ULTRA = "ultra"
     CORE = "core"
     SD3 = "sd3"
 
 class StylePreset(Enum):
-    """Варианты стилей генерации (style_preset) из Stability API."""
+    """Style presets from the Stability API."""
     THREE_D_MODEL = "3d-model"
     ANALOG_FILM = "analog-film"
     ANIME = "anime"
@@ -55,11 +55,7 @@ class StylePreset(Enum):
 
 
 class _StabilityAI_StableImage_Generate:
-    """
-    Класс для взаимодействия с REST API StabilityAI (v2beta) — генерация изображений.
-
-    Позволяет генерировать изображения по текстовому описанию через разные модели Stable Diffusion.
-    """
+    """Client for the StabilityAI REST API (v2beta) for image generation."""
 
     BASE_URL = "https://api.stability.ai/v2beta/stable-image/generate"
 
@@ -70,14 +66,13 @@ class _StabilityAI_StableImage_Generate:
         client_user_id: Optional[str] = None,
         client_version: Optional[str] = None,
     ):
-        """
-        Инициализация клиента для API Stable Diffusion.
+        """Initialize the client for the Stable Diffusion API.
 
         Args:
-            api_key (str): Ваш API-ключ StabilityAI (обязательно).
-            client_id (Optional[str]): ID вашего приложения (опционально).
-            client_user_id (Optional[str]): Уникальный идентификатор пользователя (опционально).
-            client_version (Optional[str]): Версия вашего клиента (опционально).
+            api_key: Your StabilityAI API key.
+            client_id: Optional application identifier.
+            client_user_id: Optional unique user identifier.
+            client_version: Optional client version string.
         """
         self.api_key = api_key
         self.client_id = client_id
@@ -100,36 +95,34 @@ class _StabilityAI_StableImage_Generate:
         save_path: Optional[str] = None,
         return_type: str = "bytes",
     ) -> Union[bytes, str, BinaryIO, "PILImage.Image", list]:
-        """
-        Генерирует изображение по текстовому описанию через REST API StabilityAI.
+        """Generate an image from ``prompt`` using the StabilityAI REST API.
 
         Args:
-            prompt (str): Описательный текстовый запрос (обязательно).
-            model (ModelType): Модель генерации (ultra, core, sd3).
-            negative_prompt (Optional[str]): Текст того, чего не должно быть на изображении (опционально).
-            aspect_ratio (Optional[AspectRatio]): Пропорция изображения (опционально).
-            seed (Optional[int]): Число для детерминированной генерации; если None, результат случайный (опционально).
-        output_format (OutputFormat): Формат выдаваемого изображения (webp, png, jpeg).
-        samples (int): Количество изображений для генерации.
-        image (Optional[Union[str, bytes, BinaryIO, PILImage.Image]]):
-                Исходное изображение для режимов img2img/inpainting.
-                Можно передать путь до файла (str), байты (bytes), файловый объект (BinaryIO) или объект PIL.Image (Pillow).
-            style_preset (Optional[str]): Предустановленный стиль (опционально, см. документацию StabilityAI).
-            strength (Optional[float]): Сила изменения исходного изображения (0..1, только для img2img/inpainting).
-            accept (str): Тип возвращаемых данных от API — "image/*" (байты) или "application/json" (base64) (обычно не менять).
-            save_path (Optional[str]): Если указан, результат сохраняется по этому пути (опционально).
-            return_type (str): Формат результата: "bytes" (байты, по умолчанию),
-                "str" (путь к файлу, только с save_path), "BinaryIO" (io.BytesIO), "PIL" (PIL.Image.Image).
+            prompt: Text prompt for generation.
+            model: Generation model to use.
+            negative_prompt: Text that must not appear in the image.
+            aspect_ratio: Desired aspect ratio of the result.
+            seed: Seed for deterministic generation or ``None`` for random.
+            output_format: Output image format.
+            samples: Number of images to generate.
+            image: Optional source image for img2img/inpainting. Can be a path,
+                bytes, a file-like object or ``PIL.Image``.
+            style_preset: Optional style preset.
+            strength: Strength of modification for img2img mode.
+            accept: Response type, usually not changed.
+            save_path: Optional path to save the result.
+            return_type: Result format: ``"bytes"`` (default), ``"str"`` (path with
+                ``save_path``), ``"BinaryIO"`` or ``"PIL"``.
 
         Returns:
-            bytes | list: Если return_type="bytes". При samples>1 возвращается список.
-            str | list: Путь к файлам, если return_type="str" и указан save_path. При samples>1 список путей.
-            io.BytesIO | list: Если return_type="BinaryIO". При samples>1 список объектов.
-            PIL.Image.Image | list: Если return_type="PIL" и установлен Pillow. При samples>1 список изображений.
+            bytes | list: When ``return_type="bytes"``. List if ``samples > 1``.
+            str | list: Path(s) when ``return_type="str"`` and ``save_path`` is set.
+            io.BytesIO | list: When ``return_type="BinaryIO"``.
+            PIL.Image.Image | list: When ``return_type="PIL"``.
 
         Raises:
-            ValueError: Если передан некорректный тип изображения или return_type.
-            Exception: При ошибке API возвращается текст ошибки.
+            ValueError: If an invalid image type or ``return_type`` is provided.
+            Exception: Raised when the API returns an error.
         """
         url = f"{self.BASE_URL}/{model.value}"
 
