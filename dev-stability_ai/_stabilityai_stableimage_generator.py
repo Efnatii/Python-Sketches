@@ -2,6 +2,7 @@ import requests
 from enum import Enum
 from typing import Optional, Union, BinaryIO
 import io
+import os
 
 try:
     from PIL import Image as PILImage
@@ -91,13 +92,14 @@ class _StabilityAI_StableImage_Generate:
         aspect_ratio: Optional[AspectRatio] = None,
         seed: Optional[int] = None,
         output_format: OutputFormat = OutputFormat.WEBP,
+        samples: int = 1,
         image: Optional[Union[str, bytes, BinaryIO, "PILImage.Image"]] = None,
         style_preset: Optional[StylePreset] = None,
         strength: Optional[float] = None,
         accept: str = "image/*",
         save_path: Optional[str] = None,
         return_type: str = "bytes",
-    ) -> Union[bytes, str, BinaryIO, "PILImage.Image"]:
+    ) -> Union[bytes, str, BinaryIO, "PILImage.Image", list]:
         """
         Генерирует изображение по текстовому описанию через REST API StabilityAI.
 
@@ -107,8 +109,9 @@ class _StabilityAI_StableImage_Generate:
             negative_prompt (Optional[str]): Текст того, чего не должно быть на изображении (опционально).
             aspect_ratio (Optional[AspectRatio]): Пропорция изображения (опционально).
             seed (Optional[int]): Число для детерминированной генерации; если None, результат случайный (опционально).
-            output_format (OutputFormat): Формат выдаваемого изображения (webp, png, jpeg).
-            image (Optional[Union[str, bytes, BinaryIO, PILImage.Image]]):
+        output_format (OutputFormat): Формат выдаваемого изображения (webp, png, jpeg).
+        samples (int): Количество изображений для генерации.
+        image (Optional[Union[str, bytes, BinaryIO, PILImage.Image]]):
                 Исходное изображение для режимов img2img/inpainting.
                 Можно передать путь до файла (str), байты (bytes), файловый объект (BinaryIO) или объект PIL.Image (Pillow).
             style_preset (Optional[str]): Предустановленный стиль (опционально, см. документацию StabilityAI).
@@ -119,10 +122,10 @@ class _StabilityAI_StableImage_Generate:
                 "str" (путь к файлу, только с save_path), "BinaryIO" (io.BytesIO), "PIL" (PIL.Image.Image).
 
         Returns:
-            bytes: Если return_type="bytes".
-            str: Путь к файлу, если return_type="str" и указан save_path.
-            io.BytesIO: Если return_type="BinaryIO".
-            PIL.Image.Image: Если return_type="PIL" и установлен Pillow.
+            bytes | list: Если return_type="bytes". При samples>1 возвращается список.
+            str | list: Путь к файлам, если return_type="str" и указан save_path. При samples>1 список путей.
+            io.BytesIO | list: Если return_type="BinaryIO". При samples>1 список объектов.
+            PIL.Image.Image | list: Если return_type="PIL" и установлен Pillow. При samples>1 список изображений.
 
         Raises:
             ValueError: Если передан некорректный тип изображения или return_type.
@@ -156,63 +159,69 @@ class _StabilityAI_StableImage_Generate:
         if strength is not None:
             data["strength"] = strength
 
-        files = None
-        # Обработка разных форматов изображения
-        if image is not None:
-            if isinstance(image, str):
-                # Передан путь до файла
-                with open(image, "rb") as f:
-                    files = {"image": f}
+        results = []
+        for i in range(samples):
+            files = None
+            # Обработка разных форматов изображения
+            if image is not None:
+                if isinstance(image, str):
+                    # Передан путь до файла
+                    with open(image, "rb") as f:
+                        files = {"image": f}
+                        response = requests.post(url, headers=headers, files=files, data=data)
+                elif isinstance(image, bytes):
+                    # Переданы байты
+                    files = {"image": ("image", image)}
                     response = requests.post(url, headers=headers, files=files, data=data)
-            elif isinstance(image, bytes):
-                # Переданы байты
-                files = {"image": ("image", image)}
-                response = requests.post(url, headers=headers, files=files, data=data)
-            elif hasattr(image, "read"):
-                # Файловый объект (например io.BytesIO)
-                files = {"image": ("image", image.read())}
-                response = requests.post(url, headers=headers, files=files, data=data)
-            elif PILImage and isinstance(image, PILImage.Image):
-                # Объект PIL.Image (Pillow)
-                buf = io.BytesIO()
-                image.save(buf, format="PNG")
-                buf.seek(0)
-                files = {"image": ("image", buf.read())}
-                response = requests.post(url, headers=headers, files=files, data=data)
+                elif hasattr(image, "read"):
+                    # Файловый объект (например io.BytesIO)
+                    files = {"image": ("image", image.read())}
+                    response = requests.post(url, headers=headers, files=files, data=data)
+                elif PILImage and isinstance(image, PILImage.Image):
+                    # Объект PIL.Image (Pillow)
+                    buf = io.BytesIO()
+                    image.save(buf, format="PNG")
+                    buf.seek(0)
+                    files = {"image": ("image", buf.read())}
+                    response = requests.post(url, headers=headers, files=files, data=data)
+                else:
+                    raise ValueError("Параметр image должен быть str (путь), bytes, BinaryIO или PIL.Image.Image")
             else:
-                raise ValueError("Параметр image должен быть str (путь), bytes, BinaryIO или PIL.Image.Image")
-        else:
-            # Для чисто текстовой генерации по требованиям API
-            files = {"none": ""}
-            response = requests.post(url, headers=headers, files=files, data=data)
+                # Для чисто текстовой генерации по требованиям API
+                files = {"none": ""}
+                response = requests.post(url, headers=headers, files=files, data=data)
 
-        if response.status_code == 200:
-            # Сохраняем файл, если требуется
-            if save_path:
-                with open(save_path, "wb") as file:
-                    file.write(response.content)
-                if return_type == "str":
-                    return save_path
+            if response.status_code == 200:
+                current_save = None
+                if save_path:
+                    base, ext = os.path.splitext(save_path)
+                    current_save = f"{base}{i+1}{ext}" if samples > 1 else save_path
+                    with open(current_save, "wb") as file:
+                        file.write(response.content)
+                    if return_type == "str":
+                        results.append(current_save)
+                        continue
 
-            # Возвращаем результат в нужном формате
-            if return_type == "bytes":
-                return response.content
-            elif return_type == "BinaryIO":
-                return io.BytesIO(response.content)
-            elif return_type == "PIL":
-                if not PILImage:
-                    raise ImportError("Pillow (PIL) не установлен!")
-                return PILImage.open(io.BytesIO(response.content))
-            elif return_type == "str":
-                return save_path if save_path else ""
+                if return_type == "bytes":
+                    results.append(response.content)
+                elif return_type == "BinaryIO":
+                    results.append(io.BytesIO(response.content))
+                elif return_type == "PIL":
+                    if not PILImage:
+                        raise ImportError("Pillow (PIL) не установлен!")
+                    results.append(PILImage.open(io.BytesIO(response.content)))
+                elif return_type == "str":
+                    results.append(current_save if current_save else "")
+                else:
+                    raise ValueError(f"Неизвестный return_type: {return_type}")
             else:
-                raise ValueError(f"Неизвестный return_type: {return_type}")
-        else:
-            try:
-                error_info = response.json()
-            except Exception:
-                error_info = response.text
-            raise Exception(f"StabilityAI API Error: {error_info}")
+                try:
+                    error_info = response.json()
+                except Exception:
+                    error_info = response.text
+                raise Exception(f"StabilityAI API Error: {error_info}")
+
+        return results[0] if samples == 1 else results
 
 # --- Пример использования ---
 
