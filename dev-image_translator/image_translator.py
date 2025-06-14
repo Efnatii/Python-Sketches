@@ -35,7 +35,10 @@ from math import sin
 
 import pytesseract
 
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+# Использовать путь из переменной окружения TESSERACT_CMD, если она задана
+pytesseract.pytesseract.tesseract_cmd = os.environ.get(
+    "TESSERACT_CMD", r"C:\\Program Files\\Tesseract-OCR\\tesseract.exe"
+)
 
 try:
     ctypes.windll.user32.SetProcessDPIAware()

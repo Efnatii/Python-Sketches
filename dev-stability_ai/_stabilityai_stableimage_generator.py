@@ -228,7 +228,11 @@ class _StabilityAI_StableImage_Generate:
 if __name__ == "__main__":
     import os
 
-    api = _StabilityAI_StableImage_Generate(api_key=os.environ['_STABILITYAI_API_KEY_1'])
+    api_key = os.environ.get("_STABILITYAI_API_KEY_1")
+    if not api_key:
+        raise SystemExit("Set the _STABILITYAI_API_KEY_1 environment variable")
+
+    api = _StabilityAI_StableImage_Generate(api_key=api_key)
 
     img = api.generate(
         prompt="""cinematic detailed 8k illustration of a shy anthro pony girl (no horn) with short soft white
