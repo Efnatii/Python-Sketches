@@ -1,3 +1,17 @@
 __pycache__/
 .pytest_cache/
 *.pyc
+
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.tif
+*.webp
+*.ico
+*.svg
+*.psd
+*.heic
+*.avif
