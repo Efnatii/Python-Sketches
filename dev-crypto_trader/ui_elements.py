@@ -489,8 +489,8 @@ class OrderDialog(GUIElement):
         self._order_type_dropdown_open = False
         self._order_type_item_height = 32
 
-        self.quantity_input = TextInput(self._quantity_rect(), small_font, placeholder="Количество")
-        self.price_input = TextInput(self._price_rect(), small_font, placeholder="Цена")
+        self.quantity_input = TextInput(self._quantity_rect(), small_font, placeholder="")
+        self.price_input = TextInput(self._price_rect(), small_font, placeholder="")
         self.confirm_button = Button(self._confirm_button_rect(), "Отправить", small_font)
         self.cancel_button = Button(self._cancel_button_rect(), "Отмена", small_font)
         self.on_submit: Optional[Callable[[dict], None]] = None
@@ -635,7 +635,13 @@ class OrderDialog(GUIElement):
             pygame.draw.rect(surface, color, rect, border_radius=6)
             pygame.draw.rect(surface, (40, 45, 60), rect, 1, border_radius=6)
             label = self.small_font.render("Покупка" if side == "BUY" else "Продажа", True, (240, 240, 250))
-            surface.blit(label, (rect.x + (rect.width - label.get_width()) // 2, rect.y + 6))
+            surface.blit(
+                label,
+                (
+                    rect.x + (rect.width - label.get_width()) // 2,
+                    rect.y + (rect.height - label.get_height()) // 2,
+                ),
+            )
 
         order_type_lbl = self.small_font.render("Тип", True, (180, 180, 190))
         surface.blit(order_type_lbl, (self._type_column_x(), self._toggle_label_y()))
@@ -653,24 +659,13 @@ class OrderDialog(GUIElement):
             [(arrow_x, arrow_y - 4), (arrow_x + 10, arrow_y - 4), (arrow_x + 5, arrow_y + 6)],
         )
 
-        if self._order_type_dropdown_open:
-            for value, rect in self._order_type_option_rects():
-                color = (90, 92, 130) if value == self.order_type else (50, 52, 70)
-                pygame.draw.rect(surface, color, rect, border_radius=6)
-                pygame.draw.rect(surface, (40, 45, 60), rect, 1, border_radius=6)
-                option_label = self.small_font.render(self._order_type_label(value), True, (235, 235, 245))
-                surface.blit(
-                    option_label,
-                    (rect.x + 12, rect.y + (rect.height - option_label.get_height()) // 2),
-                )
-
         clip_backup = surface.get_clip()
         scroll_area = self._scroll_area_rect()
         if scroll_area.height > 0:
             surface.set_clip(scroll_area)
 
         quantity_lbl = self.small_font.render("Количество", True, (180, 180, 190))
-        surface.blit(quantity_lbl, (self._content_x(), self._quantity_rect().y - 26))
+        surface.blit(quantity_lbl, (self._content_x(), self._quantity_rect().y - 22))
         self.quantity_input.draw(surface)
 
         if self.order_type == "LIMIT":
@@ -690,6 +685,9 @@ class OrderDialog(GUIElement):
 
         self.cancel_button.draw(surface)
         self.confirm_button.draw(surface)
+
+        if self._order_type_dropdown_open:
+            self._draw_order_type_dropdown(surface)
 
     def _set_order_type(self, value: str) -> None:
         if value == self.order_type:
@@ -712,6 +710,17 @@ class OrderDialog(GUIElement):
         if side == "BUY":
             return pygame.Rect(x, y, width, 36)
         return pygame.Rect(x + width + self.button_gap, y, width, 36)
+
+    def _draw_order_type_dropdown(self, surface: pygame.Surface) -> None:
+        for value, rect in self._order_type_option_rects():
+            color = (90, 92, 130) if value == self.order_type else (50, 52, 70)
+            pygame.draw.rect(surface, color, rect, border_radius=6)
+            pygame.draw.rect(surface, (40, 45, 60), rect, 1, border_radius=6)
+            option_label = self.small_font.render(self._order_type_label(value), True, (235, 235, 245))
+            surface.blit(
+                option_label,
+                (rect.x + 12, rect.y + (rect.height - option_label.get_height()) // 2),
+            )
 
     def _cancel(self) -> None:
         self.close()
