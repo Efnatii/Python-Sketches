@@ -652,9 +652,15 @@ class OrderDialog(GUIElement):
         return pygame.Rect(self.rect.x + 160, self.rect.y + 96, 120, 32)
 
     def _type_rect(self, order_type: str) -> pygame.Rect:
+        """Return a rectangle that keeps both type buttons within the dialog."""
+
+        btn_width = 100
+        spacing = 12
+        first_x = self.rect.x + 210
         if order_type == "MARKET":
-            return pygame.Rect(self.rect.x + 210, self.rect.y + 96, 140, 32)
-        return pygame.Rect(self.rect.x + 360, self.rect.y + 96, 140, 32)
+            return pygame.Rect(first_x, self.rect.y + 96, btn_width, 32)
+        second_x = first_x + btn_width + spacing
+        return pygame.Rect(second_x, self.rect.y + 96, btn_width, 32)
 
     def _cancel(self) -> None:
         self.close()
