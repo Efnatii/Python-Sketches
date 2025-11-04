@@ -85,13 +85,17 @@ class CryptoTraderApp(BaseApp):
         self.filtered_symbols: List[str] = self.all_symbols[:300]
         self.dropdown.set_items(self.filtered_symbols)
 
+        self._load_last_symbol()
+
     def _on_symbol(self, symbol: str) -> None:
+        self.search.set_text(symbol)
         with self.state["lock"]:
             self.state["current_symbol"] = symbol
         self.price_fetcher.refresh_history()
         self.chart.reset_view()
         self.dropdown.visible = False
         self.search.active = False
+        config.save_last_symbol(symbol)
 
     def handle_event(self, event: pygame.event.Event) -> None:
         if self.search.handle_event(event):
@@ -124,14 +128,14 @@ class CryptoTraderApp(BaseApp):
     def draw(self, screen: pygame.Surface) -> None:
         screen.fill(config.COLOR_BG)
         self.search.draw(screen)
-        with self.state["lock"]:
-            current = self.state.get("current_symbol")
-        label = current if current else "—"
-        text = self.font.render(label, True, config.COLOR_TEXT if current else config.COLOR_HINT)
-        screen.blit(text, (config.SEARCH_RECT[0] + config.SEARCH_RECT[2] + 12, config.TOPBAR_Y))
         self.chart.draw(screen)
         self.status_panel.draw(screen)
         self.dropdown.draw(screen)
+
+    def _load_last_symbol(self) -> None:
+        last = config.load_last_symbol()
+        if last and last in self.all_symbols:
+            self._on_symbol(last)
 
     def stop(self) -> None:
         self.price_fetcher.stop()
