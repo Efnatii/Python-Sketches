@@ -108,7 +108,7 @@ class CryptoTraderApp(BaseApp):
         self.dropdown.set_items(self.filtered_symbols)
 
         self._load_last_symbol()
-        dialog_rect = pygame.Rect(config.WIDTH // 2 - 220, 120, 440, 320)
+        dialog_rect = pygame.Rect(config.WIDTH // 2 - 220, 100, 440, 380)
         self.order_dialog = OrderDialog(dialog_rect, self.font, self.small)
 
     def _on_symbol(self, symbol: str) -> None:
