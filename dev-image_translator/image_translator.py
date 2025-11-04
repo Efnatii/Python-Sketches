@@ -6,6 +6,18 @@
 её содержимое захватывается, распознаётся через OCR и переводится.
 Переведённый текст отображается рядом с курсором.
 """
+def counter(start):
+    state = start
+    def adder(X):
+        nonlocal state
+        print(X + state)
+        state += 1
+    return adder
+F = counter(5)
+F(3)
+F(5)
+F(F(5))
+exit()
 
 import sys
 import os
