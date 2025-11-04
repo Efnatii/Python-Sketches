@@ -478,6 +478,7 @@ class OrderDialog(GUIElement):
         self.side = "BUY"
         self.order_type = "MARKET"
         self.reduce_only = False
+        self.move_sl_to_be = False
         self.last_price: Optional[float] = None
         self.margin_x = 30
         self.column_gap = 20
@@ -505,6 +506,7 @@ class OrderDialog(GUIElement):
         self.side = "BUY"
         self.order_type = "MARKET"
         self.reduce_only = False
+        self.move_sl_to_be = False
         self.scroll_offset = 0
         self._order_type_dropdown_open = False
         self.quantity_input.set_text("")
@@ -554,6 +556,7 @@ class OrderDialog(GUIElement):
                     "quantity": self.quantity_input.text.strip(),
                     "price": self.price_input.text.strip(),
                     "reduce_only": self.reduce_only,
+                    "move_sl_to_be": self.move_sl_to_be,
                 }
                 self.on_submit(payload)
             return True
@@ -587,6 +590,9 @@ class OrderDialog(GUIElement):
             if self._reduce_only_rect().collidepoint(event.pos):
                 self.reduce_only = not self.reduce_only
                 return True
+            if self._move_sl_rect().collidepoint(event.pos):
+                self.move_sl_to_be = not self.move_sl_to_be
+                return True
 
         def submit() -> None:
             payload = {
@@ -596,6 +602,7 @@ class OrderDialog(GUIElement):
                 "quantity": self.quantity_input.text.strip(),
                 "price": self.price_input.text.strip(),
                 "reduce_only": self.reduce_only,
+                "move_sl_to_be": self.move_sl_to_be,
             }
             if self.on_submit:
                 self.on_submit(payload)
@@ -665,7 +672,8 @@ class OrderDialog(GUIElement):
             surface.set_clip(scroll_area)
 
         quantity_lbl = self.small_font.render("Количество", True, (180, 180, 190))
-        surface.blit(quantity_lbl, (self._content_x(), self._quantity_rect().y - 22))
+        quantity_y = max(self._quantity_rect().y - 22, scroll_area.y + 4)
+        surface.blit(quantity_lbl, (self._content_x(), quantity_y))
         self.quantity_input.draw(surface)
 
         if self.order_type == "LIMIT":
@@ -674,11 +682,23 @@ class OrderDialog(GUIElement):
             self.price_input.draw(surface)
 
         reduce_rect = self._reduce_only_rect()
+        tp_sl_label = self.small_font.render("TP/SL", True, (180, 180, 190))
+        tp_sl_label_y = max(reduce_rect.y - 24, scroll_area.y + 4)
+        surface.blit(tp_sl_label, (self._content_x(), tp_sl_label_y))
         pygame.draw.rect(surface, (40, 45, 60), reduce_rect, border_radius=4)
         if self.reduce_only:
             pygame.draw.rect(surface, (120, 180, 120), reduce_rect.inflate(-6, -6), border_radius=3)
         label = self.small_font.render("Закрытие позиции", True, (210, 210, 220))
         surface.blit(label, (reduce_rect.right + 12, reduce_rect.y + 4))
+
+        move_sl_rect = self._move_sl_rect()
+        pygame.draw.rect(surface, (40, 45, 60), move_sl_rect, border_radius=4)
+        if self.move_sl_to_be:
+            pygame.draw.rect(surface, (120, 160, 220), move_sl_rect.inflate(-6, -6), border_radius=3)
+        move_label_1 = self.small_font.render("Перемещать SL в безубыток", True, (210, 210, 220))
+        move_label_2 = self.small_font.render("после преодоления безубытка", True, (170, 170, 190))
+        surface.blit(move_label_1, (move_sl_rect.right + 12, move_sl_rect.y + 2))
+        surface.blit(move_label_2, (move_sl_rect.right + 12, move_sl_rect.y + 16))
 
         if scroll_area.height > 0:
             surface.set_clip(clip_backup)
@@ -701,6 +721,10 @@ class OrderDialog(GUIElement):
 
     def _reduce_only_rect(self) -> pygame.Rect:
         top = self._base_reduce_only_top() - self.scroll_offset
+        return pygame.Rect(self._content_x(), top, 24, 24)
+
+    def _move_sl_rect(self) -> pygame.Rect:
+        top = self._base_move_sl_top() - self.scroll_offset
         return pygame.Rect(self._content_x(), top, 24, 24)
 
     def _side_rect(self, side: str) -> pygame.Rect:
@@ -819,6 +843,9 @@ class OrderDialog(GUIElement):
             top = self._base_price_top() + self.input_height + 24
         return top
 
+    def _base_move_sl_top(self) -> int:
+        return self._base_reduce_only_top() + 44
+
     def _scroll_area_rect(self) -> pygame.Rect:
         top = self._base_quantity_top() - 12
         bottom = self._cancel_button_rect().top - 20
@@ -826,7 +853,7 @@ class OrderDialog(GUIElement):
         return pygame.Rect(self._content_x(), top, self._content_width(), height)
 
     def _content_base_bottom(self) -> int:
-        return self._base_reduce_only_top() + 24
+        return self._base_move_sl_top() + 48
 
     def _max_scroll(self) -> int:
         viewport = self._scroll_area_rect()
