@@ -65,43 +65,6 @@ class TextInput(GUIElement):
         surface.blit(label, (self.rect.x + 6, self.rect.y + (self.rect.height - label.get_height()) // 2))
 
 
-class InfoField(GUIElement):
-    """Passive text container used for displaying read-only values."""
-
-    def __init__(
-        self,
-        rect: pygame.Rect,
-        font: pygame.font.Font,
-        *,
-        placeholder: str = "—",
-        align: str = "left",
-    ) -> None:
-        super().__init__(rect)
-        self.font = font
-        self.placeholder = placeholder
-        self.align = align if align in {"left", "right"} else "left"
-        self.text = ""
-
-    def set_text(self, value: Optional[str]) -> None:
-        self.text = value or ""
-
-    def handle_event(self, event: pygame.event.Event) -> bool:
-        return False
-
-    def draw(self, surface: pygame.Surface) -> None:
-        pygame.draw.rect(surface, (35, 36, 46), self.rect, border_radius=4)
-        pygame.draw.rect(surface, (90, 90, 110), self.rect, 1, border_radius=4)
-        text = self.text or self.placeholder
-        color = (240, 240, 240) if self.text else (150, 150, 160)
-        label = self.font.render(text, True, color)
-        if self.align == "right":
-            x = self.rect.right - label.get_width() - 8
-        else:
-            x = self.rect.x + 8
-        y = self.rect.y + (self.rect.height - label.get_height()) // 2
-        surface.blit(label, (x, y))
-
-
 class Button(GUIElement):
     def __init__(
         self,
@@ -232,27 +195,21 @@ class StatusPanel(GUIElement):
         self.active_tab = 0
         self._tab_height = 32
         self._tab_padding = 6
-        self._line_height = self.font.get_height() + 4
-        self._scroll_offsets = [0, 0]
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             for idx, rect in self._tab_rects():
                 if rect.collidepoint(event.pos):
-                    if self.active_tab != idx:
-                        self.active_tab = idx
+                    self.active_tab = idx
                     return True
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button in (4, 5) and self.rect.collidepoint(event.pos):
-            step = self._line_height * 3
-            delta = -step if event.button == 4 else step
-            self._scroll(self.active_tab, delta)
-            return True
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self.rect.collidepoint(event.pos):
             if event.pos[1] < self.rect.y + self._tab_height:
                 return True
             if self.active_tab == 0:
-                for message, _, top, bottom in self._message_segments():
-                    if top <= event.pos[1] < bottom:
+                layout = self._visible_message_layout()
+                y = event.pos[1]
+                for message, top, bottom, _ in layout:
+                    if top <= y < bottom:
                         try:
                             pygame.scrap.put(pygame.SCRAP_TEXT, message.encode("utf-8"))
                         except pygame.error:
@@ -263,8 +220,6 @@ class StatusPanel(GUIElement):
     def draw(self, surface: pygame.Surface) -> None:
         pygame.draw.rect(surface, (24, 24, 32), self.rect)
         pygame.draw.rect(surface, (55, 55, 75), self.rect, 1)
-
-        self._clamp_scroll(self.active_tab)
 
         for idx, rect in self._tab_rects():
             color = (70, 75, 100) if idx == self.active_tab else (40, 42, 56)
@@ -280,128 +235,60 @@ class StatusPanel(GUIElement):
             )
 
         if self.active_tab == 0:
-            self._draw_messages(surface)
+            line_h = self.font.get_height() + 4
+            for _, top, _, lines in self._visible_message_layout():
+                y = top
+                for line in lines:
+                    label = self.font.render(line, True, (210, 210, 220))
+                    surface.blit(label, (self.rect.x + 6, y))
+                    y += line_h
         else:
             self._draw_orders(surface)
 
-    def _scroll(self, tab: int, delta: int) -> None:
-        if delta == 0:
-            return
-        current = self._scroll_offsets[tab]
-        updated = max(0, min(current + delta, self._max_scroll(tab)))
-        self._scroll_offsets[tab] = updated
-
-    def _clamp_scroll(self, tab: int) -> None:
-        maximum = self._max_scroll(tab)
-        if self._scroll_offsets[tab] > maximum:
-            self._scroll_offsets[tab] = maximum
-
-    def _max_scroll(self, tab: int) -> int:
-        content_rect = self._content_rect()
-        available = max(0, content_rect.height - 12)
-        total = self._total_content_height(tab)
-        if total <= available:
-            return 0
-        return total - available
-
-    def _total_content_height(self, tab: int) -> int:
-        content_rect = self._content_rect()
-        width = content_rect.width - 12
-        if width <= 0:
-            return 0
-        if tab == 0:
-            with self.state["lock"]:
-                entries = list(self.state.get("status_log", []))
-            texts = entries
-        else:
-            with self.state["lock"]:
-                orders = list(self.state.get("order_log", []))
-            texts = [self._format_order_text(order) for order in orders]
-        total_lines = 0
-        for text in texts:
-            lines = list(self._wrap_text(text, width)) or [""]
-            total_lines += len(lines)
-        return total_lines * self._line_height
-
-    def _draw_messages(self, surface: pygame.Surface) -> None:
-        content_rect = self._content_rect()
-        clip = surface.get_clip()
-        surface.set_clip(content_rect)
-        top_limit = content_rect.y + 6
-        bottom_limit = content_rect.bottom - 6
-        for message, lines, top, bottom in self._message_segments():
-            if bottom < top_limit:
-                continue
-            if top > bottom_limit:
-                break
-            first_line = max(0, (top_limit - top) // self._line_height) if top < top_limit else 0
-            y = top + first_line * self._line_height
-            for line in lines[first_line:]:
-                if y >= bottom_limit:
-                    break
-                label = self.font.render(line, True, (210, 210, 220))
-                surface.blit(label, (content_rect.x + 6, y))
-                y += self._line_height
-        surface.set_clip(clip)
-
-    def _draw_orders(self, surface: pygame.Surface) -> None:
-        content_rect = self._content_rect()
-        clip = surface.get_clip()
-        surface.set_clip(content_rect)
-        top_limit = content_rect.y + 6
-        bottom_limit = content_rect.bottom - 6
-        for _, lines, top, bottom in self._order_segments():
-            if bottom < top_limit:
-                continue
-            if top > bottom_limit:
-                break
-            first_line = max(0, (top_limit - top) // self._line_height) if top < top_limit else 0
-            y = top + first_line * self._line_height
-            for line in lines[first_line:]:
-                if y >= bottom_limit:
-                    break
-                label = self.font.render(line, True, (210, 210, 220))
-                surface.blit(label, (content_rect.x + 6, y))
-                y += self._line_height
-        surface.set_clip(clip)
-
-    def _message_segments(self):
-        content_rect = self._content_rect()
-        width = content_rect.width - 12
-        start_y = content_rect.y + 6 - self._scroll_offsets[0]
+    def _visible_message_layout(self):
         with self.state["lock"]:
             messages = list(self.state.get("status_log", []))
-        y = start_y
-        for message in messages:
-            lines = list(self._wrap_text(message, width)) or [""]
-            height = len(lines) * self._line_height
-            top = y
-            bottom = y + height
-            yield message, lines, top, bottom
-            y = bottom
-
-    def _order_segments(self):
+        line_h = self.font.get_height() + 4
         content_rect = self._content_rect()
-        width = content_rect.width - 12
-        start_y = content_rect.y + 6 - self._scroll_offsets[1]
+        max_lines = content_rect.height // line_h
+        max_width = content_rect.width - 12
+        y = content_rect.y + 6
+        drawn = 0
+        layout = []
+        for msg in messages:
+            if drawn >= max_lines:
+                break
+            lines = list(self._wrap_text(msg, max_width))
+            if not lines:
+                lines = [""]
+            available = max_lines - drawn
+            visible_lines = lines[:available]
+            top = y
+            bottom = y + line_h * len(visible_lines)
+            layout.append((msg, top, bottom, visible_lines))
+            y = bottom
+            drawn += len(visible_lines)
+        return layout
+
+    def _draw_orders(self, surface: pygame.Surface) -> None:
+        line_h = self.font.get_height() + 4
+        content_rect = self._content_rect()
+        y = content_rect.y + 6
+
         with self.state["lock"]:
             orders = list(self.state.get("order_log", []))
-        y = start_y
-        for order in orders:
-            text = self._format_order_text(order)
-            lines = list(self._wrap_text(text, width)) or [""]
-            height = len(lines) * self._line_height
-            top = y
-            bottom = y + height
-            yield order, lines, top, bottom
-            y = bottom
 
-    def _format_order_text(self, order: dict) -> str:
-        return (
-            f"[{order.get('time', '')}] {order.get('side', '')} {order.get('symbol', '')}"
-            f" {order.get('type', '')} qty={order.get('quantity', '')}"
-            f" price={order.get('price', '')} ({order.get('status', '')})"
-        )
+        for order in orders:
+            if y + line_h > content_rect.bottom - 6:
+                break
+            text = (
+                f"[{order.get('time', '')}] {order.get('side', '')} {order.get('symbol', '')}"
+                f" {order.get('type', '')} qty={order.get('quantity', '')}"
+                f" price={order.get('price', '')} ({order.get('status', '')})"
+            )
+            label = self.font.render(text, True, (210, 210, 220))
+            surface.blit(label, (content_rect.x + 6, y))
+            y += line_h
 
     def _wrap_text(self, text: str, max_width: int):
         if not text:
@@ -481,30 +368,22 @@ class OrderDialog(GUIElement):
         self.order_type = "MARKET"
         self.reduce_only = False
         self.last_price: Optional[float] = None
-        self._padding = 30
-        self._column_gap = 16
-        self._control_height = 32
-        self._field_height = 30
-        self._side_top = 0
-        self._type_top = 0
-        self._half_width = 0
-        self._side_left = 0
-        self._type_left = 0
-        self._side_label_pos = (rect.x + self._padding, rect.y + 70)
-        self._type_label_pos = (rect.x + self._padding, rect.y + 70)
-        self._quantity_label_pos = (rect.x + self._padding, rect.y + 140)
-        self._price_label_pos = (rect.x + self._padding, rect.y + 200)
-        self._buttons_top = rect.y + rect.height - self._padding - self._control_height
-        self._reduce_only_rect_cache = pygame.Rect(rect.x + self._padding, rect.y + rect.height - 90, 24, 24)
-
-        placeholder_rect = pygame.Rect(rect.x + self._padding, rect.y + 160, rect.width - 2 * self._padding, self._field_height)
-        self.quantity_input = TextInput(placeholder_rect.copy(), small_font, placeholder="Количество")
-        self.price_input = TextInput(placeholder_rect.copy(), small_font, placeholder="Цена")
-        self.confirm_button = Button(pygame.Rect(rect.x, rect.y, 160, self._control_height), "Отправить", small_font)
-        self.cancel_button = Button(pygame.Rect(rect.x, rect.y, 120, self._control_height), "Отмена", small_font)
+        q_rect = pygame.Rect(rect.x + 30, rect.y + 140, rect.width - 60, 28)
+        p_rect = pygame.Rect(rect.x + 30, rect.y + 200, rect.width - 60, 28)
+        self.quantity_input = TextInput(q_rect, small_font, placeholder="Количество")
+        self.price_input = TextInput(p_rect, small_font, placeholder="Цена")
+        self.confirm_button = Button(
+            pygame.Rect(rect.x + rect.width - 150, rect.y + rect.height - 46, 120, 32),
+            "Отправить",
+            small_font,
+        )
+        self.cancel_button = Button(
+            pygame.Rect(rect.x + 30, rect.y + rect.height - 46, 120, 32),
+            "Отмена",
+            small_font,
+        )
         self.on_submit: Optional[Callable[[dict], None]] = None
         self.on_cancel: Optional[Callable[[], None]] = None
-        self._apply_layout()
 
     def open(self, symbol: str, last_price: Optional[float], on_submit: Callable[[dict], None], on_cancel: Callable[[], None]) -> None:
         self.visible = True
@@ -515,7 +394,6 @@ class OrderDialog(GUIElement):
         self.side = "BUY"
         self.order_type = "MARKET"
         self.reduce_only = False
-        self._apply_layout()
         self.quantity_input.set_text("")
         if last_price is not None:
             self.price_input.set_text(f"{last_price:.4f}")
@@ -604,7 +482,6 @@ class OrderDialog(GUIElement):
     def draw(self, surface: pygame.Surface) -> None:
         if not self.visible:
             return
-        self._apply_layout()
         overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
         overlay.fill((5, 5, 8, 160))
         surface.blit(overlay, (0, 0))
@@ -615,7 +492,7 @@ class OrderDialog(GUIElement):
         surface.blit(title, (self.rect.x + 30, self.rect.y + 24))
 
         subtitle = self.small_font.render("Сторона", True, (180, 180, 190))
-        surface.blit(subtitle, self._side_label_pos)
+        surface.blit(subtitle, (self.rect.x + 30, self.rect.y + 72))
         for side in ("BUY", "SELL"):
             rect = self._side_rect(side)
             color = (50, 110, 70) if side == "BUY" else (130, 60, 60)
@@ -627,7 +504,7 @@ class OrderDialog(GUIElement):
             surface.blit(label, (rect.x + (rect.width - label.get_width()) // 2, rect.y + 6))
 
         order_type_lbl = self.small_font.render("Тип", True, (180, 180, 190))
-        surface.blit(order_type_lbl, self._type_label_pos)
+        surface.blit(order_type_lbl, (self.rect.x + 210, self.rect.y + 72))
         for otype in ("MARKET", "LIMIT"):
             rect = self._type_rect(otype)
             color = (80, 80, 110) if self.order_type == otype else (50, 52, 70)
@@ -637,12 +514,12 @@ class OrderDialog(GUIElement):
             surface.blit(label, (rect.x + (rect.width - label.get_width()) // 2, rect.y + 6))
 
         quantity_lbl = self.small_font.render("Количество", True, (180, 180, 190))
-        surface.blit(quantity_lbl, self._quantity_label_pos)
+        surface.blit(quantity_lbl, (self.rect.x + 30, self.rect.y + 118))
         self.quantity_input.draw(surface)
 
         if self.order_type == "LIMIT":
             price_lbl = self.small_font.render("Цена", True, (180, 180, 190))
-            surface.blit(price_lbl, self._price_label_pos)
+            surface.blit(price_lbl, (self.rect.x + 30, self.rect.y + 178))
             self.price_input.draw(surface)
 
         reduce_rect = self._reduce_only_rect()
@@ -656,61 +533,19 @@ class OrderDialog(GUIElement):
         self.confirm_button.draw(surface)
 
     def _reduce_only_rect(self) -> pygame.Rect:
-        return self._reduce_only_rect_cache.copy()
+        return pygame.Rect(self.rect.x + 30, self.rect.y + self.rect.height - 90, 24, 24)
 
     def _side_rect(self, side: str) -> pygame.Rect:
-        index = 0 if side == "BUY" else 1
-        x = self._side_left + index * (self._half_width + self._column_gap)
-        return pygame.Rect(x, self._side_top, self._half_width, self._control_height)
+        if side == "BUY":
+            return pygame.Rect(self.rect.x + 30, self.rect.y + 96, 120, 32)
+        return pygame.Rect(self.rect.x + 160, self.rect.y + 96, 120, 32)
 
     def _type_rect(self, order_type: str) -> pygame.Rect:
-        index = 0 if order_type == "MARKET" else 1
-        x = self._type_left + index * (self._half_width + self._column_gap)
-        return pygame.Rect(x, self._type_top, self._half_width, self._control_height)
+        if order_type == "MARKET":
+            return pygame.Rect(self.rect.x + 210, self.rect.y + 96, 140, 32)
+        return pygame.Rect(self.rect.x + 360, self.rect.y + 96, 140, 32)
 
     def _cancel(self) -> None:
         self.close()
         if self.on_cancel:
             self.on_cancel()
-
-    def _apply_layout(self) -> None:
-        content_width = max(200, self.rect.width - 2 * self._padding)
-        self._half_width = max(100, (content_width - self._column_gap) // 2)
-        self._side_left = self.rect.x + self._padding
-        self._type_left = self._side_left + self._half_width + self._column_gap
-        self._side_top = self.rect.y + 96
-        self._type_top = self._side_top
-        self._side_label_pos = (self._side_left, self._side_top - 24)
-        self._type_label_pos = (self._type_left, self._type_top - 24)
-
-        quantity_label_y = self._side_top + self._control_height + 24
-        self._quantity_label_pos = (self._side_left, quantity_label_y)
-        quantity_rect = pygame.Rect(self._side_left, quantity_label_y + 20, content_width, self._field_height)
-        self.quantity_input.rect = quantity_rect
-
-        price_label_y = quantity_rect.bottom + 20
-        self._price_label_pos = (self._side_left, price_label_y)
-        price_rect = pygame.Rect(self._side_left, price_label_y + 20, content_width, self._field_height)
-        self.price_input.rect = price_rect
-
-        self._buttons_top = self.rect.bottom - self._padding - self._control_height
-        confirm_width = max(150, min(220, content_width // 2 + 40))
-        self.confirm_button.rect = pygame.Rect(
-            self.rect.right - self._padding - confirm_width,
-            self._buttons_top,
-            confirm_width,
-            self._control_height,
-        )
-        self.cancel_button.rect = pygame.Rect(
-            self._side_left,
-            self._buttons_top,
-            120,
-            self._control_height,
-        )
-
-        min_checkbox_y = max(price_rect.bottom + 16, self.rect.y + self._padding)
-        max_checkbox_y = self._buttons_top - self._control_height - 12
-        checkbox_y = min_checkbox_y
-        if max_checkbox_y < checkbox_y:
-            checkbox_y = max_checkbox_y
-        self._reduce_only_rect_cache = pygame.Rect(self._side_left, checkbox_y, 24, 24)
