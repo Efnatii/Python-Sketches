@@ -479,20 +479,15 @@ class OrderDialog(GUIElement):
         self.order_type = "MARKET"
         self.reduce_only = False
         self.last_price: Optional[float] = None
-        q_rect = pygame.Rect(rect.x + 30, rect.y + 140, rect.width - 60, 28)
-        p_rect = pygame.Rect(rect.x + 30, rect.y + 200, rect.width - 60, 28)
-        self.quantity_input = TextInput(q_rect, small_font, placeholder="Количество")
-        self.price_input = TextInput(p_rect, small_font, placeholder="Цена")
-        self.confirm_button = Button(
-            pygame.Rect(rect.x + rect.width - 150, rect.y + rect.height - 46, 120, 32),
-            "Отправить",
-            small_font,
-        )
-        self.cancel_button = Button(
-            pygame.Rect(rect.x + 30, rect.y + rect.height - 46, 120, 32),
-            "Отмена",
-            small_font,
-        )
+        self.margin_x = 30
+        self.column_gap = 20
+        self.button_gap = 12
+        self.input_height = 34
+
+        self.quantity_input = TextInput(self._quantity_rect(), small_font, placeholder="Количество")
+        self.price_input = TextInput(self._price_rect(), small_font, placeholder="Цена")
+        self.confirm_button = Button(self._confirm_button_rect(), "Отправить", small_font)
+        self.cancel_button = Button(self._cancel_button_rect(), "Отмена", small_font)
         self.on_submit: Optional[Callable[[dict], None]] = None
         self.on_cancel: Optional[Callable[[], None]] = None
 
@@ -512,6 +507,7 @@ class OrderDialog(GUIElement):
             self.price_input.set_text("")
         self.quantity_input.active = False
         self.price_input.active = False
+        self._sync_layout()
 
     def close(self) -> None:
         self.visible = False
@@ -521,6 +517,7 @@ class OrderDialog(GUIElement):
     def handle_event(self, event: pygame.event.Event) -> bool:
         if not self.visible:
             return False
+        self._sync_layout()
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if not self.rect.collidepoint(event.pos):
                 self._cancel()
@@ -593,6 +590,7 @@ class OrderDialog(GUIElement):
     def draw(self, surface: pygame.Surface) -> None:
         if not self.visible:
             return
+        self._sync_layout()
         overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
         overlay.fill((5, 5, 8, 160))
         surface.blit(overlay, (0, 0))
@@ -603,7 +601,7 @@ class OrderDialog(GUIElement):
         surface.blit(title, (self.rect.x + 30, self.rect.y + 24))
 
         subtitle = self.small_font.render("Сторона", True, (180, 180, 190))
-        surface.blit(subtitle, (self.rect.x + 30, self.rect.y + 72))
+        surface.blit(subtitle, (self._side_column_x(), self._toggle_label_y()))
         for side in ("BUY", "SELL"):
             rect = self._side_rect(side)
             color = (50, 110, 70) if side == "BUY" else (130, 60, 60)
@@ -615,7 +613,7 @@ class OrderDialog(GUIElement):
             surface.blit(label, (rect.x + (rect.width - label.get_width()) // 2, rect.y + 6))
 
         order_type_lbl = self.small_font.render("Тип", True, (180, 180, 190))
-        surface.blit(order_type_lbl, (self.rect.x + 210, self.rect.y + 72))
+        surface.blit(order_type_lbl, (self._type_column_x(), self._toggle_label_y()))
         for otype in ("MARKET", "LIMIT"):
             rect = self._type_rect(otype)
             color = (80, 80, 110) if self.order_type == otype else (50, 52, 70)
@@ -625,12 +623,12 @@ class OrderDialog(GUIElement):
             surface.blit(label, (rect.x + (rect.width - label.get_width()) // 2, rect.y + 6))
 
         quantity_lbl = self.small_font.render("Количество", True, (180, 180, 190))
-        surface.blit(quantity_lbl, (self.rect.x + 30, self.rect.y + 118))
+        surface.blit(quantity_lbl, (self._content_x(), self._quantity_rect().y - 26))
         self.quantity_input.draw(surface)
 
         if self.order_type == "LIMIT":
             price_lbl = self.small_font.render("Цена", True, (180, 180, 190))
-            surface.blit(price_lbl, (self.rect.x + 30, self.rect.y + 178))
+            surface.blit(price_lbl, (self._content_x(), self._price_rect().y - 26))
             self.price_input.draw(surface)
 
         reduce_rect = self._reduce_only_rect()
@@ -638,31 +636,86 @@ class OrderDialog(GUIElement):
         if self.reduce_only:
             pygame.draw.rect(surface, (120, 180, 120), reduce_rect.inflate(-6, -6), border_radius=3)
         label = self.small_font.render("Закрытие позиции", True, (210, 210, 220))
-        surface.blit(label, (reduce_rect.right + 10, reduce_rect.y + 2))
+        surface.blit(label, (reduce_rect.right + 12, reduce_rect.y + 4))
 
         self.cancel_button.draw(surface)
         self.confirm_button.draw(surface)
 
     def _reduce_only_rect(self) -> pygame.Rect:
-        return pygame.Rect(self.rect.x + 30, self.rect.y + self.rect.height - 90, 24, 24)
+        top = self._quantity_rect().bottom + 24
+        if self.order_type == "LIMIT":
+            top = self._price_rect().bottom + 24
+        return pygame.Rect(self._content_x(), top, 24, 24)
 
     def _side_rect(self, side: str) -> pygame.Rect:
+        width = self._toggle_button_width()
+        y = self._toggle_button_y()
+        x = self._side_column_x()
         if side == "BUY":
-            return pygame.Rect(self.rect.x + 30, self.rect.y + 96, 120, 32)
-        return pygame.Rect(self.rect.x + 160, self.rect.y + 96, 120, 32)
+            return pygame.Rect(x, y, width, 36)
+        return pygame.Rect(x + width + self.button_gap, y, width, 36)
 
     def _type_rect(self, order_type: str) -> pygame.Rect:
         """Return a rectangle that keeps both type buttons within the dialog."""
 
-        btn_width = 100
-        spacing = 12
-        first_x = self.rect.x + 210
+        width = self._toggle_button_width()
+        y = self._toggle_button_y()
+        x = self._type_column_x()
         if order_type == "MARKET":
-            return pygame.Rect(first_x, self.rect.y + 96, btn_width, 32)
-        second_x = first_x + btn_width + spacing
-        return pygame.Rect(second_x, self.rect.y + 96, btn_width, 32)
+            return pygame.Rect(x, y, width, 36)
+        return pygame.Rect(x + width + self.button_gap, y, width, 36)
 
     def _cancel(self) -> None:
         self.close()
         if self.on_cancel:
             self.on_cancel()
+
+    def _content_x(self) -> int:
+        return self.rect.x + self.margin_x
+
+    def _content_width(self) -> int:
+        return self.rect.width - 2 * self.margin_x
+
+    def _column_width(self) -> int:
+        return (self._content_width() - self.column_gap) // 2
+
+    def _side_column_x(self) -> int:
+        return self._content_x()
+
+    def _type_column_x(self) -> int:
+        return self._side_column_x() + self._column_width() + self.column_gap
+
+    def _toggle_label_y(self) -> int:
+        return self.rect.y + 78
+
+    def _toggle_button_y(self) -> int:
+        return self.rect.y + 108
+
+    def _toggle_button_width(self) -> int:
+        return (self._column_width() - self.button_gap) // 2
+
+    def _quantity_rect(self) -> pygame.Rect:
+        top = self.rect.y + 176
+        return pygame.Rect(self._content_x(), top, self._content_width(), self.input_height)
+
+    def _price_rect(self) -> pygame.Rect:
+        top = self._quantity_rect().bottom + 44
+        return pygame.Rect(self._content_x(), top, self._content_width(), self.input_height)
+
+    def _cancel_button_rect(self) -> pygame.Rect:
+        width = 150
+        height = 36
+        y = self.rect.bottom - height - 30
+        return pygame.Rect(self._content_x(), y, width, height)
+
+    def _confirm_button_rect(self) -> pygame.Rect:
+        width = 150
+        height = 36
+        y = self.rect.bottom - height - 30
+        return pygame.Rect(self.rect.right - self.margin_x - width, y, width, height)
+
+    def _sync_layout(self) -> None:
+        self.quantity_input.rect = self._quantity_rect()
+        self.price_input.rect = self._price_rect()
+        self.cancel_button.rect = self._cancel_button_rect()
+        self.confirm_button.rect = self._confirm_button_rect()

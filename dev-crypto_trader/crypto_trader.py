@@ -265,10 +265,10 @@ class CryptoTraderApp(BaseApp):
         screen.fill(config.COLOR_BG)
         self.search.draw(screen)
         self.new_order_button.draw(screen)
-        label = self.small.render("Демо баланс", True, config.COLOR_HINT)
+        label = self.small.render("Демо", True, config.COLOR_HINT)
         label_pos = (
-            config.BALANCE_RECT[0] + config.BALANCE_RECT[2] + 12,
-            config.BALANCE_RECT[1] + (config.BALANCE_RECT[3] - label.get_height()) // 2,
+            config.WIDTH - label.get_width() - 20,
+            config.TOPBAR_Y + (config.SEARCH_RECT[3] - label.get_height()) // 2,
         )
         screen.blit(label, label_pos)
         self.balance_input.draw(screen)
