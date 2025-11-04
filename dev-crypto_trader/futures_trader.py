@@ -193,14 +193,50 @@ class BinanceFuturesClient:
 
     # -- higher level helpers ---------------------------------------------
     def place_market_order(self, symbol: str, side: str, quantity: str, reduce_only: bool = False) -> Dict:
+        return self.place_order(symbol, side, "MARKET", quantity, reduce_only=reduce_only)
+
+    def place_limit_order(
+        self,
+        symbol: str,
+        side: str,
+        quantity: str,
+        price: str,
+        time_in_force: str = "GTC",
+        reduce_only: bool = False,
+    ) -> Dict:
+        return self.place_order(
+            symbol,
+            side,
+            "LIMIT",
+            quantity,
+            price=price,
+            time_in_force=time_in_force,
+            reduce_only=reduce_only,
+        )
+
+    def place_order(
+        self,
+        symbol: str,
+        side: str,
+        order_type: str,
+        quantity: str,
+        *,
+        price: Optional[str] = None,
+        time_in_force: Optional[str] = None,
+        reduce_only: bool = False,
+    ) -> Dict:
         params = {
             "symbol": symbol,
             "side": side,
-            "type": "MARKET",
+            "type": order_type,
             "quantity": quantity,
             "timestamp": str(int(time.time() * 1000)),
             "newOrderRespType": "RESULT",
         }
+        if price is not None:
+            params["price"] = price
+        if time_in_force is not None:
+            params["timeInForce"] = time_in_force
         if reduce_only:
             params["reduceOnly"] = "true"
         return self.post("/fapi/v1/order", params)
@@ -210,6 +246,14 @@ class BinanceFuturesClient:
             "timestamp": str(int(time.time() * 1000)),
         }
         return self.get("/fapi/v2/balance", params)
+
+    def set_demo_balance(self, asset: str, amount: str) -> Dict:
+        params = {
+            "asset": asset,
+            "amount": amount,
+            "timestamp": str(int(time.time() * 1000)),
+        }
+        return self.post("/fapi/v1/balance", params)
 
 
 class DemoFuturesTrader:
@@ -254,6 +298,10 @@ class DemoFuturesTrader:
         formatted = f"{value:.{precision}f}".rstrip("0").rstrip(".")
         return formatted or "0"
 
+    def _format_price(self, value: float) -> str:
+        formatted = f"{value:.8f}".rstrip("0").rstrip(".")
+        return formatted or "0"
+
     def _determine_quantity(self, symbol: str, price: float) -> Optional[str]:
         custom_qty = os.environ.get("BINANCE_FUTURES_DEMO_QUANTITY")
         if custom_qty:
@@ -281,6 +329,38 @@ class DemoFuturesTrader:
         raw_qty = notional / price
         return self._format_quantity(raw_qty)
 
+    def _append_order_to_state(
+        self,
+        *,
+        symbol: str,
+        side: str,
+        order_type: str,
+        quantity: str,
+        price: str,
+        status: str,
+    ) -> None:
+        with self.state["lock"]:
+            orders = self.state.setdefault("order_log", [])
+            stamp = time.strftime("%H:%M:%S")
+            orders.insert(
+                0,
+                {
+                    "time": stamp,
+                    "symbol": symbol,
+                    "side": side,
+                    "type": order_type,
+                    "quantity": quantity,
+                    "price": price,
+                    "status": status,
+                },
+            )
+            del orders[200:]
+
+    def suggest_quantity(self, symbol: str, price: Optional[float]) -> Optional[str]:
+        if price is None or price <= 0:
+            return None
+        return self._determine_quantity(symbol, price)
+
     def _log_balances_async(self) -> None:
         if not self.is_enabled():
             return
@@ -297,30 +377,51 @@ class DemoFuturesTrader:
                 if usdt:
                     balance = usdt.get("balance") or usdt.get("walletBalance")
                     if balance is not None:
+                        try:
+                            balance_value = float(balance)
+                        except (TypeError, ValueError):
+                            balance_value = None
+                        else:
+                            with self.state["lock"]:
+                                self.state["demo_balance"] = balance_value
                         _log_to_state(self.state, f"Баланс USDT: {balance}")
 
         threading.Thread(target=worker, daemon=True).start()
 
     # -- public API --------------------------------------------------------
-    def place_market_order(self, symbol: str, side: str, mark_price: Optional[float], reduce_only: bool = False) -> None:
+    def place_market_order(
+        self,
+        symbol: str,
+        side: str,
+        mark_price: Optional[float],
+        *,
+        quantity: Optional[float] = None,
+        reduce_only: bool = False,
+    ) -> None:
         if not self.is_enabled():
             _log_to_state(self.state, "Демо торговля недоступна: нет API ключей")
             return
         if not symbol:
             _log_to_state(self.state, "Нельзя отправить ордер без выбранного символа")
             return
-        if mark_price is None:
+        if mark_price is None and quantity is None:
             _log_to_state(self.state, "Нет последней цены для расчёта количества")
             return
 
-        quantity = self._determine_quantity(symbol, mark_price)
-        if not quantity:
+        if quantity is not None:
+            qty_value = self._format_quantity(quantity)
+        else:
+            assert mark_price is not None
+            qty_value = self._determine_quantity(symbol, mark_price)
+        if not qty_value:
             return
+
+        price_snapshot = self._format_price(mark_price) if mark_price is not None else "-"
 
         with self._lock:
             assert self._client is not None
             try:
-                response = self._client.place_market_order(symbol, side, quantity, reduce_only=reduce_only)
+                response = self._client.place_market_order(symbol, side, qty_value, reduce_only=reduce_only)
             except requests.HTTPError as exc:
                 try:
                     payload = exc.response.json()
@@ -328,15 +429,147 @@ class DemoFuturesTrader:
                 except Exception:  # pragma: no cover - network errors
                     message = str(exc)
                 _log_to_state(self.state, f"Биржа отклонила ордер {side} {symbol}: {message}")
+                self._append_order_to_state(
+                    symbol=symbol,
+                    side=side,
+                    order_type="MARKET",
+                    quantity=qty_value,
+                    price=price_snapshot,
+                    status="Отклонён",
+                )
                 return
             except Exception as exc:  # pragma: no cover - network errors
                 _log_to_state(self.state, f"Ошибка отправки ордера {side} {symbol}: {exc}")
+                self._append_order_to_state(
+                    symbol=symbol,
+                    side=side,
+                    order_type="MARKET",
+                    quantity=qty_value,
+                    price=price_snapshot,
+                    status="Ошибка",
+                )
                 return
 
-        executed = response.get("executedQty") or response.get("origQty") or quantity
+        executed = response.get("executedQty") or response.get("origQty") or qty_value
         avg_price = response.get("avgPrice") or response.get("price") or mark_price
         _log_to_state(
             self.state,
             f"Создан ордер {side} {symbol}: qty={executed} по цене ~{avg_price}",
         )
+        price_str = self._format_price(float(avg_price)) if avg_price is not None else price_snapshot
+        self._append_order_to_state(
+            symbol=symbol,
+            side=side,
+            order_type="MARKET",
+            quantity=str(executed),
+            price=price_str,
+            status="Исполнен",
+        )
+
+    def place_limit_order(
+        self,
+        symbol: str,
+        side: str,
+        price: float,
+        *,
+        quantity: Optional[float] = None,
+        reduce_only: bool = False,
+    ) -> None:
+        if not self.is_enabled():
+            _log_to_state(self.state, "Демо торговля недоступна: нет API ключей")
+            return
+        if price <= 0:
+            _log_to_state(self.state, "Цена лимитного ордера должна быть положительной")
+            return
+        if quantity is not None:
+            qty_value = self._format_quantity(quantity)
+        else:
+            qty_value = self._determine_quantity(symbol, price)
+        if not qty_value:
+            return
+
+        price_formatted = self._format_price(price)
+
+        with self._lock:
+            assert self._client is not None
+            try:
+                response = self._client.place_limit_order(
+                    symbol,
+                    side,
+                    qty_value,
+                    price_formatted,
+                    reduce_only=reduce_only,
+                )
+            except requests.HTTPError as exc:
+                try:
+                    payload = exc.response.json()
+                    message = payload.get("msg") if isinstance(payload, dict) else str(payload)
+                except Exception:
+                    message = str(exc)
+                _log_to_state(self.state, f"Биржа отклонила лимитный ордер {side} {symbol}: {message}")
+                self._append_order_to_state(
+                    symbol=symbol,
+                    side=side,
+                    order_type="LIMIT",
+                    quantity=qty_value,
+                    price=price_formatted,
+                    status="Отклонён",
+                )
+                return
+            except Exception as exc:
+                _log_to_state(self.state, f"Ошибка отправки лимитного ордера {side} {symbol}: {exc}")
+                self._append_order_to_state(
+                    symbol=symbol,
+                    side=side,
+                    order_type="LIMIT",
+                    quantity=qty_value,
+                    price=price_formatted,
+                    status="Ошибка",
+                )
+                return
+
+        status = response.get("status") or "Создан"
+        _log_to_state(
+            self.state,
+            f"Создан лимитный ордер {side} {symbol}: qty={qty_value} по цене {price_formatted} ({status})",
+        )
+        self._append_order_to_state(
+            symbol=symbol,
+            side=side,
+            order_type="LIMIT",
+            quantity=qty_value,
+            price=price_formatted,
+            status=status,
+        )
+
+    def update_demo_balance(self, asset: str, amount: float) -> None:
+        formatted = self._format_price(amount)
+        if not self.is_enabled():
+            with self.state["lock"]:
+                self.state["demo_balance"] = amount
+            _log_to_state(self.state, f"Локальный демо баланс {asset} установлен на {formatted}")
+            return
+
+        def worker() -> None:
+            assert self._client is not None
+            try:
+                self._client.set_demo_balance(asset, formatted)
+            except requests.HTTPError as exc:
+                try:
+                    payload = exc.response.json()
+                    message = payload.get("msg") if isinstance(payload, dict) else str(payload)
+                except Exception:
+                    message = str(exc)
+                _log_to_state(self.state, f"Биржа отклонила обновление баланса: {message}")
+                return
+            except Exception as exc:
+                _log_to_state(self.state, f"Ошибка обновления баланса: {exc}")
+                return
+
+            with self.state["lock"]:
+                self.state["demo_balance"] = amount
+            _log_to_state(self.state, f"Баланс {asset} обновлён до {formatted}")
+            self._log_balances_async()
+
+        threading.Thread(target=worker, daemon=True).start()
 
