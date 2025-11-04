@@ -483,6 +483,8 @@ class OrderDialog(GUIElement):
         self.column_gap = 20
         self.button_gap = 12
         self.input_height = 34
+        self.scroll_offset = 0
+        self._scroll_step = 40
 
         self.quantity_input = TextInput(self._quantity_rect(), small_font, placeholder="Количество")
         self.price_input = TextInput(self._price_rect(), small_font, placeholder="Цена")
@@ -500,6 +502,7 @@ class OrderDialog(GUIElement):
         self.side = "BUY"
         self.order_type = "MARKET"
         self.reduce_only = False
+        self.scroll_offset = 0
         self.quantity_input.set_text("")
         if last_price is not None:
             self.price_input.set_text(f"{last_price:.4f}")
@@ -522,6 +525,18 @@ class OrderDialog(GUIElement):
             if not self.rect.collidepoint(event.pos):
                 self._cancel()
                 return True
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button in (4, 5):
+            area = self._scroll_area_rect()
+            if area.height > 0 and area.collidepoint(event.pos):
+                delta = -self._scroll_step if event.button == 4 else self._scroll_step
+                self._adjust_scroll(delta)
+                return True
+        if event.type == pygame.MOUSEWHEEL:
+            area = self._scroll_area_rect()
+            if area.height > 0 and area.collidepoint(pygame.mouse.get_pos()):
+                if event.y:
+                    self._adjust_scroll(-event.y * self._scroll_step)
+                    return True
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             self._cancel()
             return True
@@ -553,11 +568,13 @@ class OrderDialog(GUIElement):
             if self._type_rect("MARKET").collidepoint(event.pos):
                 self.order_type = "MARKET"
                 self.price_input.active = False
+                self._sync_layout()
                 return True
             if self._type_rect("LIMIT").collidepoint(event.pos):
                 self.order_type = "LIMIT"
                 if not self.price_input.text and self.last_price is not None:
                     self.price_input.set_text(f"{self.last_price:.4f}")
+                self._sync_layout()
                 return True
             if self._reduce_only_rect().collidepoint(event.pos):
                 self.reduce_only = not self.reduce_only
@@ -622,6 +639,11 @@ class OrderDialog(GUIElement):
             label = self.small_font.render("Рыночный" if otype == "MARKET" else "Лимитный", True, (235, 235, 245))
             surface.blit(label, (rect.x + (rect.width - label.get_width()) // 2, rect.y + 6))
 
+        clip_backup = surface.get_clip()
+        scroll_area = self._scroll_area_rect()
+        if scroll_area.height > 0:
+            surface.set_clip(scroll_area)
+
         quantity_lbl = self.small_font.render("Количество", True, (180, 180, 190))
         surface.blit(quantity_lbl, (self._content_x(), self._quantity_rect().y - 26))
         self.quantity_input.draw(surface)
@@ -638,13 +660,16 @@ class OrderDialog(GUIElement):
         label = self.small_font.render("Закрытие позиции", True, (210, 210, 220))
         surface.blit(label, (reduce_rect.right + 12, reduce_rect.y + 4))
 
+        if scroll_area.height > 0:
+            surface.set_clip(clip_backup)
+
+        self._draw_scroll_indicator(surface, scroll_area)
+
         self.cancel_button.draw(surface)
         self.confirm_button.draw(surface)
 
     def _reduce_only_rect(self) -> pygame.Rect:
-        top = self._quantity_rect().bottom + 24
-        if self.order_type == "LIMIT":
-            top = self._price_rect().bottom + 24
+        top = self._base_reduce_only_top() - self.scroll_offset
         return pygame.Rect(self._content_x(), top, 24, 24)
 
     def _side_rect(self, side: str) -> pygame.Rect:
@@ -695,11 +720,11 @@ class OrderDialog(GUIElement):
         return (self._column_width() - self.button_gap) // 2
 
     def _quantity_rect(self) -> pygame.Rect:
-        top = self.rect.y + 176
+        top = self._base_quantity_top() - self.scroll_offset
         return pygame.Rect(self._content_x(), top, self._content_width(), self.input_height)
 
     def _price_rect(self) -> pygame.Rect:
-        top = self._quantity_rect().bottom + 44
+        top = self._base_price_top() - self.scroll_offset
         return pygame.Rect(self._content_x(), top, self._content_width(), self.input_height)
 
     def _cancel_button_rect(self) -> pygame.Rect:
@@ -715,7 +740,51 @@ class OrderDialog(GUIElement):
         return pygame.Rect(self.rect.right - self.margin_x - width, y, width, height)
 
     def _sync_layout(self) -> None:
+        self.scroll_offset = max(0, min(self.scroll_offset, self._max_scroll()))
         self.quantity_input.rect = self._quantity_rect()
         self.price_input.rect = self._price_rect()
         self.cancel_button.rect = self._cancel_button_rect()
         self.confirm_button.rect = self._confirm_button_rect()
+
+    def _base_quantity_top(self) -> int:
+        return self.rect.y + 176
+
+    def _base_price_top(self) -> int:
+        return self._base_quantity_top() + self.input_height + 44
+
+    def _base_reduce_only_top(self) -> int:
+        top = self._base_quantity_top() + self.input_height + 24
+        if self.order_type == "LIMIT":
+            top = self._base_price_top() + self.input_height + 24
+        return top
+
+    def _scroll_area_rect(self) -> pygame.Rect:
+        top = self._base_quantity_top() - 48
+        bottom = self._cancel_button_rect().top - 20
+        height = max(0, bottom - top)
+        return pygame.Rect(self._content_x(), top, self._content_width(), height)
+
+    def _content_base_bottom(self) -> int:
+        return self._base_reduce_only_top() + 24
+
+    def _max_scroll(self) -> int:
+        viewport = self._scroll_area_rect()
+        return max(0, self._content_base_bottom() - viewport.bottom)
+
+    def _adjust_scroll(self, delta: int) -> None:
+        self.scroll_offset = max(0, min(self.scroll_offset + delta, self._max_scroll()))
+        self._sync_layout()
+
+    def _draw_scroll_indicator(self, surface: pygame.Surface, area: pygame.Rect) -> None:
+        if area.height <= 0:
+            return
+        max_scroll = self._max_scroll()
+        if max_scroll <= 0:
+            return
+        indicator_height = max(24, int(area.height * (area.height / (area.height + max_scroll))))
+        track = pygame.Rect(area.right - 6, area.y, 3, area.height)
+        pygame.draw.rect(surface, (60, 62, 80), track, border_radius=2)
+        ratio = self.scroll_offset / max_scroll if max_scroll else 0
+        indicator_y = area.y + int((area.height - indicator_height) * ratio)
+        indicator = pygame.Rect(area.right - 7, indicator_y, 5, indicator_height)
+        pygame.draw.rect(surface, (130, 135, 170), indicator, border_radius=3)
