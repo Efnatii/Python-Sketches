@@ -485,6 +485,9 @@ class OrderDialog(GUIElement):
         self.input_height = 34
         self.scroll_offset = 0
         self._scroll_step = 40
+        self._order_type_options = [("MARKET", "Рыночный"), ("LIMIT", "Лимитный")]
+        self._order_type_dropdown_open = False
+        self._order_type_item_height = 32
 
         self.quantity_input = TextInput(self._quantity_rect(), small_font, placeholder="Количество")
         self.price_input = TextInput(self._price_rect(), small_font, placeholder="Цена")
@@ -503,6 +506,7 @@ class OrderDialog(GUIElement):
         self.order_type = "MARKET"
         self.reduce_only = False
         self.scroll_offset = 0
+        self._order_type_dropdown_open = False
         self.quantity_input.set_text("")
         if last_price is not None:
             self.price_input.set_text(f"{last_price:.4f}")
@@ -516,6 +520,7 @@ class OrderDialog(GUIElement):
         self.visible = False
         self.quantity_input.active = False
         self.price_input.active = False
+        self._order_type_dropdown_open = False
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         if not self.visible:
@@ -553,6 +558,20 @@ class OrderDialog(GUIElement):
                 self.on_submit(payload)
             return True
 
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            type_button = self._order_type_button_rect()
+            if type_button.collidepoint(event.pos):
+                self._order_type_dropdown_open = not self._order_type_dropdown_open
+                return True
+            if self._order_type_dropdown_open:
+                for value, rect in self._order_type_option_rects():
+                    if rect.collidepoint(event.pos):
+                        self._order_type_dropdown_open = False
+                        self._set_order_type(value)
+                        return True
+                if not self._order_type_dropdown_area().collidepoint(event.pos):
+                    self._order_type_dropdown_open = False
+
         if self.quantity_input.handle_event(event):
             return True
         if self.order_type == "LIMIT" and self.price_input.handle_event(event):
@@ -564,17 +583,6 @@ class OrderDialog(GUIElement):
                 return True
             if self._side_rect("SELL").collidepoint(event.pos):
                 self.side = "SELL"
-                return True
-            if self._type_rect("MARKET").collidepoint(event.pos):
-                self.order_type = "MARKET"
-                self.price_input.active = False
-                self._sync_layout()
-                return True
-            if self._type_rect("LIMIT").collidepoint(event.pos):
-                self.order_type = "LIMIT"
-                if not self.price_input.text and self.last_price is not None:
-                    self.price_input.set_text(f"{self.last_price:.4f}")
-                self._sync_layout()
                 return True
             if self._reduce_only_rect().collidepoint(event.pos):
                 self.reduce_only = not self.reduce_only
@@ -631,13 +639,30 @@ class OrderDialog(GUIElement):
 
         order_type_lbl = self.small_font.render("Тип", True, (180, 180, 190))
         surface.blit(order_type_lbl, (self._type_column_x(), self._toggle_label_y()))
-        for otype in ("MARKET", "LIMIT"):
-            rect = self._type_rect(otype)
-            color = (80, 80, 110) if self.order_type == otype else (50, 52, 70)
-            pygame.draw.rect(surface, color, rect, border_radius=6)
-            pygame.draw.rect(surface, (40, 45, 60), rect, 1, border_radius=6)
-            label = self.small_font.render("Рыночный" if otype == "MARKET" else "Лимитный", True, (235, 235, 245))
-            surface.blit(label, (rect.x + (rect.width - label.get_width()) // 2, rect.y + 6))
+        type_button = self._order_type_button_rect()
+        button_color = (90, 92, 130) if self._order_type_dropdown_open else (80, 80, 110)
+        pygame.draw.rect(surface, button_color, type_button, border_radius=6)
+        pygame.draw.rect(surface, (40, 45, 60), type_button, 1, border_radius=6)
+        label = self.small_font.render(self._order_type_label(self.order_type), True, (235, 235, 245))
+        surface.blit(label, (type_button.x + 12, type_button.y + (type_button.height - label.get_height()) // 2))
+        arrow_y = type_button.y + type_button.height // 2
+        arrow_x = type_button.right - 20
+        pygame.draw.polygon(
+            surface,
+            (230, 230, 240),
+            [(arrow_x, arrow_y - 4), (arrow_x + 10, arrow_y - 4), (arrow_x + 5, arrow_y + 6)],
+        )
+
+        if self._order_type_dropdown_open:
+            for value, rect in self._order_type_option_rects():
+                color = (90, 92, 130) if value == self.order_type else (50, 52, 70)
+                pygame.draw.rect(surface, color, rect, border_radius=6)
+                pygame.draw.rect(surface, (40, 45, 60), rect, 1, border_radius=6)
+                option_label = self.small_font.render(self._order_type_label(value), True, (235, 235, 245))
+                surface.blit(
+                    option_label,
+                    (rect.x + 12, rect.y + (rect.height - option_label.get_height()) // 2),
+                )
 
         clip_backup = surface.get_clip()
         scroll_area = self._scroll_area_rect()
@@ -663,10 +688,18 @@ class OrderDialog(GUIElement):
         if scroll_area.height > 0:
             surface.set_clip(clip_backup)
 
-        self._draw_scroll_indicator(surface, scroll_area)
-
         self.cancel_button.draw(surface)
         self.confirm_button.draw(surface)
+
+    def _set_order_type(self, value: str) -> None:
+        if value == self.order_type:
+            return
+        self.order_type = value
+        if self.order_type != "LIMIT":
+            self.price_input.active = False
+        if self.order_type == "LIMIT" and not self.price_input.text and self.last_price is not None:
+            self.price_input.set_text(f"{self.last_price:.4f}")
+        self._sync_layout()
 
     def _reduce_only_rect(self) -> pygame.Rect:
         top = self._base_reduce_only_top() - self.scroll_offset
@@ -677,16 +710,6 @@ class OrderDialog(GUIElement):
         y = self._toggle_button_y()
         x = self._side_column_x()
         if side == "BUY":
-            return pygame.Rect(x, y, width, 36)
-        return pygame.Rect(x + width + self.button_gap, y, width, 36)
-
-    def _type_rect(self, order_type: str) -> pygame.Rect:
-        """Return a rectangle that keeps both type buttons within the dialog."""
-
-        width = self._toggle_button_width()
-        y = self._toggle_button_y()
-        x = self._type_column_x()
-        if order_type == "MARKET":
             return pygame.Rect(x, y, width, 36)
         return pygame.Rect(x + width + self.button_gap, y, width, 36)
 
@@ -718,6 +741,35 @@ class OrderDialog(GUIElement):
 
     def _toggle_button_width(self) -> int:
         return (self._column_width() - self.button_gap) // 2
+
+    def _order_type_button_rect(self) -> pygame.Rect:
+        return pygame.Rect(self._type_column_x(), self._toggle_button_y(), self._column_width(), 36)
+
+    def _order_type_option_rects(self):
+        rects = []
+        button = self._order_type_button_rect()
+        y = button.bottom + 6
+        for value, _ in self._order_type_options:
+            option_rect = pygame.Rect(button.x, y, button.width, self._order_type_item_height)
+            rects.append((value, option_rect))
+            y += self._order_type_item_height + 4
+        return rects
+
+    def _order_type_dropdown_area(self) -> pygame.Rect:
+        button = self._order_type_button_rect()
+        if not self._order_type_dropdown_open:
+            return button
+        option_rects = self._order_type_option_rects()
+        if not option_rects:
+            return button
+        bottom = option_rects[-1][1].bottom
+        return pygame.Rect(button.x, button.y, button.width, bottom - button.y)
+
+    def _order_type_label(self, value: str) -> str:
+        for code, label in self._order_type_options:
+            if code == value:
+                return label
+        return value
 
     def _quantity_rect(self) -> pygame.Rect:
         top = self._base_quantity_top() - self.scroll_offset
@@ -759,7 +811,7 @@ class OrderDialog(GUIElement):
         return top
 
     def _scroll_area_rect(self) -> pygame.Rect:
-        top = self._base_quantity_top() - 48
+        top = self._base_quantity_top() - 12
         bottom = self._cancel_button_rect().top - 20
         height = max(0, bottom - top)
         return pygame.Rect(self._content_x(), top, self._content_width(), height)
@@ -775,16 +827,3 @@ class OrderDialog(GUIElement):
         self.scroll_offset = max(0, min(self.scroll_offset + delta, self._max_scroll()))
         self._sync_layout()
 
-    def _draw_scroll_indicator(self, surface: pygame.Surface, area: pygame.Rect) -> None:
-        if area.height <= 0:
-            return
-        max_scroll = self._max_scroll()
-        if max_scroll <= 0:
-            return
-        indicator_height = max(24, int(area.height * (area.height / (area.height + max_scroll))))
-        track = pygame.Rect(area.right - 6, area.y, 3, area.height)
-        pygame.draw.rect(surface, (60, 62, 80), track, border_radius=2)
-        ratio = self.scroll_offset / max_scroll if max_scroll else 0
-        indicator_y = area.y + int((area.height - indicator_height) * ratio)
-        indicator = pygame.Rect(area.right - 7, indicator_y, 5, indicator_height)
-        pygame.draw.rect(surface, (130, 135, 170), indicator, border_radius=3)
