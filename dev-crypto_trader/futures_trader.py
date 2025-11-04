@@ -14,9 +14,90 @@ import os
 import threading
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import requests
+
+_ENV_LOADED = False
+
+
+def _value_from_env(*names: str) -> Tuple[Optional[str], Optional[str]]:
+    """Return the first non-empty environment variable among ``names``."""
+
+    for name in names:
+        if name not in os.environ:
+            continue
+        value = os.environ.get(name)
+        if value is None:
+            continue
+        if isinstance(value, str) and value.strip() == "":
+            continue
+        return name, value
+    return None, None
+
+
+def _strip_inline_comment(raw: str) -> str:
+    """Remove trailing comments that start with ``#`` outside of quotes."""
+
+    in_quote = None
+    for index, char in enumerate(raw):
+        if char in {'"', "'"}:
+            if in_quote is None:
+                in_quote = char
+            elif in_quote == char:
+                in_quote = None
+        elif char == "#" and in_quote is None:
+            return raw[:index]
+    return raw
+
+
+def _ensure_env_loaded(required_names: Tuple[str, ...]) -> None:
+    """Populate :mod:`os.environ` with values from a local ``.env`` file."""
+
+    global _ENV_LOADED
+    if _ENV_LOADED:
+        return
+
+    # Skip reading ``.env`` files if all required variables are already present.
+    if all((os.environ.get(name) or "").strip() for name in required_names):
+        _ENV_LOADED = True
+        return
+
+    _ENV_LOADED = True
+
+    candidates = [
+        Path(".env"),
+        Path(__file__).resolve().parent / ".env",
+        Path(__file__).resolve().parent.parent / ".env",
+    ]
+    for path in candidates:
+        try:
+            resolved = path.resolve()
+        except FileNotFoundError:
+            continue
+        if not resolved.is_file():
+            continue
+        try:
+            content = resolved.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for line in content.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in stripped:
+                continue
+            key, value = stripped.split("=", 1)
+            key = key.strip()
+            if not key:
+                continue
+            cleaned = _strip_inline_comment(value).strip()
+            if cleaned and cleaned[0] == cleaned[-1] and cleaned[0] in {'"', "'"}:
+                cleaned = cleaned[1:-1]
+            if key in os.environ and os.environ.get(key):
+                continue
+            if cleaned:
+                os.environ[key] = cleaned
+        break
 
 
 def _log_to_state(state: Dict, message: str) -> None:
@@ -42,8 +123,16 @@ class BinanceFuturesConfig:
     def from_env(cls) -> Optional["BinanceFuturesConfig"]:
         """Create configuration using environment variables if available."""
 
-        api_key = os.environ.get("BINANCE_FUTURES_API_KEY") or os.environ.get("BINANCE_API_KEY")
-        api_secret = os.environ.get("BINANCE_FUTURES_API_SECRET") or os.environ.get("BINANCE_API_SECRET")
+        _, api_key = _value_from_env("BINANCE_FUTURES_API_KEY", "BINANCE_API_KEY")
+        _, api_secret = _value_from_env("BINANCE_FUTURES_API_SECRET", "BINANCE_API_SECRET")
+
+        if not api_key or not api_secret:
+            _ensure_env_loaded(("BINANCE_FUTURES_API_KEY", "BINANCE_FUTURES_API_SECRET"))
+            if not api_key:
+                _, api_key = _value_from_env("BINANCE_FUTURES_API_KEY", "BINANCE_API_KEY")
+            if not api_secret:
+                _, api_secret = _value_from_env("BINANCE_FUTURES_API_SECRET", "BINANCE_API_SECRET")
+
         if not api_key or not api_secret:
             return None
         base_url = os.environ.get("BINANCE_FUTURES_BASE_URL", cls.base_url)
@@ -129,7 +218,10 @@ class DemoFuturesTrader:
         self._client: Optional[BinanceFuturesClient] = None
         config = BinanceFuturesConfig.from_env()
         if config is None:
-            _log_to_state(state, "Ключи Binance Futures не найдены в окружении – демо торговля отключена")
+            _log_to_state(
+                state,
+                "Ключи Binance Futures не найдены. Убедитесь, что заданы BINANCE_FUTURES_API_KEY/BINANCE_API_KEY и BINANCE_FUTURES_API_SECRET/BINANCE_API_SECRET.",
+            )
             return
         self._client = BinanceFuturesClient(config)
         _log_to_state(state, f"Демо торговля активна (endpoint: {config.base_url})")
