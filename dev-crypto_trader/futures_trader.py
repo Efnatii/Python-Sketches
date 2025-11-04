@@ -397,6 +397,7 @@ class DemoFuturesTrader:
         *,
         quantity: Optional[float] = None,
         reduce_only: bool = False,
+        move_sl_to_be: bool = False,
     ) -> None:
         if not self.is_enabled():
             _log_to_state(self.state, "Демо торговля недоступна: нет API ключей")
@@ -452,9 +453,15 @@ class DemoFuturesTrader:
 
         executed = response.get("executedQty") or response.get("origQty") or qty_value
         avg_price = response.get("avgPrice") or response.get("price") or mark_price
+        flags: List[str] = []
+        if reduce_only:
+            flags.append("reduce_only")
+        if move_sl_to_be:
+            flags.append("move_sl_to_be")
+        suffix = f" ({', '.join(flags)})" if flags else ""
         _log_to_state(
             self.state,
-            f"Создан ордер {side} {symbol}: qty={executed} по цене ~{avg_price}",
+            f"Создан ордер {side} {symbol}: qty={executed} по цене ~{avg_price}{suffix}",
         )
         price_str = self._format_price(float(avg_price)) if avg_price is not None else price_snapshot
         self._append_order_to_state(
@@ -474,6 +481,7 @@ class DemoFuturesTrader:
         *,
         quantity: Optional[float] = None,
         reduce_only: bool = False,
+        move_sl_to_be: bool = False,
     ) -> None:
         if not self.is_enabled():
             _log_to_state(self.state, "Демо торговля недоступна: нет API ключей")
@@ -529,9 +537,15 @@ class DemoFuturesTrader:
                 return
 
         status = response.get("status") or "Создан"
+        extras: List[str] = [status]
+        if reduce_only:
+            extras.append("reduce_only")
+        if move_sl_to_be:
+            extras.append("move_sl_to_be")
+        suffix = f" ({'; '.join(extras)})" if extras else ""
         _log_to_state(
             self.state,
-            f"Создан лимитный ордер {side} {symbol}: qty={qty_value} по цене {price_formatted} ({status})",
+            f"Создан лимитный ордер {side} {symbol}: qty={qty_value} по цене {price_formatted}{suffix}",
         )
         self._append_order_to_state(
             symbol=symbol,

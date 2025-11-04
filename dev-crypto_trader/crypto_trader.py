@@ -152,6 +152,7 @@ class CryptoTraderApp(BaseApp):
         side = payload.get("side", "BUY")
         order_type = payload.get("type", "MARKET")
         reduce_only = bool(payload.get("reduce_only"))
+        move_sl_to_be = bool(payload.get("move_sl_to_be"))
         quantity_text = (payload.get("quantity") or "").replace(",", ".").strip()
         price_text = (payload.get("price") or "").replace(",", ".").strip()
 
@@ -183,14 +184,28 @@ class CryptoTraderApp(BaseApp):
                 return
 
             def worker() -> None:
-                self.trader.place_limit_order(symbol, side, price_value, quantity=quantity_value, reduce_only=reduce_only)
+                self.trader.place_limit_order(
+                    symbol,
+                    side,
+                    price_value,
+                    quantity=quantity_value,
+                    reduce_only=reduce_only,
+                    move_sl_to_be=move_sl_to_be,
+                )
 
             threading.Thread(target=worker, daemon=True).start()
             self.order_dialog.close()
             return
 
         def worker() -> None:
-            self.trader.place_market_order(symbol, side, last_price, quantity=quantity_value, reduce_only=reduce_only)
+            self.trader.place_market_order(
+                symbol,
+                side,
+                last_price,
+                quantity=quantity_value,
+                reduce_only=reduce_only,
+                move_sl_to_be=move_sl_to_be,
+            )
 
         threading.Thread(target=worker, daemon=True).start()
         self.order_dialog.close()
