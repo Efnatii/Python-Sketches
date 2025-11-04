@@ -13,7 +13,7 @@ from binance_client import fetch_all_symbols
 from chart_view import CandlesChart
 from futures_trader import DemoFuturesTrader
 from price_fetcher import PriceFetcher
-from ui_elements import Button, DropdownList, OrderDialog, StatusPanel, TextInput
+from ui_elements import Button, DropdownList, InfoField, OrderDialog, StatusPanel, TextInput
 
 
 class BaseApp:
@@ -73,11 +73,11 @@ class CryptoTraderApp(BaseApp):
             self.small,
             on_click=self._open_order_dialog,
         )
-        self.balance_input = TextInput(
+        self.balance_display = InfoField(
             pygame.Rect(*config.BALANCE_RECT),
             self.small,
-            placeholder="Баланс",
-            on_enter=self._update_balance,
+            placeholder="—",
+            align="right",
         )
         self.dropdown = DropdownList(
             config.SEARCH_RECT[0],
@@ -103,13 +103,13 @@ class CryptoTraderApp(BaseApp):
         if self.trader.is_enabled():
             self._append_status("Демо торговля активна — используйте кнопку \"Новый ордер\"")
 
+        self._layout_top_bar()
         self.all_symbols = fetch_all_symbols()
         self.filtered_symbols: List[str] = self.all_symbols[:300]
         self.dropdown.set_items(self.filtered_symbols)
 
         self._load_last_symbol()
-        dialog_rect = pygame.Rect(config.WIDTH // 2 - 220, 120, 440, 320)
-        self.order_dialog = OrderDialog(dialog_rect, self.font, self.small)
+        self.order_dialog = OrderDialog(self._build_order_dialog_rect(), self.font, self.small)
 
     def _on_symbol(self, symbol: str) -> None:
         self.search.set_text(symbol)
@@ -129,7 +129,65 @@ class CryptoTraderApp(BaseApp):
             log.insert(0, f"[{stamp}] {message}")
             del log[100:]
 
+    def _layout_top_bar(self) -> None:
+        spacing = 12
+        top_y = config.TOPBAR_Y
+        height = config.SEARCH_RECT[3]
+        left = config.PLOT_MARGIN
+        right = config.STATUS_RECT[0] - 8
+        available = right - left
+
+        desired_button = 150
+        min_button = 130
+        desired_balance = 160
+        min_balance = 120
+        min_search = 220
+
+        total_desired = desired_button + desired_balance + min_search + spacing * 2
+        button_width = desired_button
+        balance_width = desired_balance
+        if total_desired > available:
+            overflow = total_desired - available
+            reduce_balance = min(overflow, balance_width - min_balance)
+            balance_width -= reduce_balance
+            overflow -= reduce_balance
+            reduce_button = min(overflow, button_width - min_button)
+            button_width -= reduce_button
+            overflow -= reduce_button
+            if overflow > 0:
+                min_search = max(160, min_search - overflow)
+
+        search_width = max(min_search, available - button_width - balance_width - spacing * 2)
+        self.search.rect = pygame.Rect(left, top_y, search_width, height)
+        self.new_order_button.rect = pygame.Rect(
+            self.search.rect.right + spacing,
+            top_y,
+            button_width,
+            height,
+        )
+        self.balance_display.rect = pygame.Rect(
+            self.new_order_button.rect.right + spacing,
+            top_y,
+            balance_width,
+            height,
+        )
+        self.dropdown.rect = pygame.Rect(
+            self.search.rect.x,
+            self.search.rect.bottom + 4,
+            self.search.rect.width,
+            self.dropdown.item_height,
+        )
+
+    def _build_order_dialog_rect(self) -> pygame.Rect:
+        chart_rect = self.chart.rect
+        width = min(520, max(440, chart_rect.width - 200))
+        height = min(420, max(360, chart_rect.height - 160))
+        dialog_rect = pygame.Rect(0, 0, width, height)
+        dialog_rect.center = chart_rect.center
+        return dialog_rect
+
     def _open_order_dialog(self) -> None:
+        self.order_dialog.rect = self._build_order_dialog_rect()
         with self.state["lock"]:
             symbol = self.state.get("current_symbol")
             last_price = self.state.get("last_price")
@@ -195,21 +253,6 @@ class CryptoTraderApp(BaseApp):
         threading.Thread(target=worker, daemon=True).start()
         self.order_dialog.close()
 
-    def _update_balance(self, value: str) -> None:
-        cleaned = value.replace(",", ".").strip()
-        if not cleaned:
-            return
-        try:
-            amount = float(cleaned)
-        except ValueError:
-            self._append_status(f"Некорректный баланс: {value}")
-            return
-        if amount <= 0:
-            self._append_status("Баланс должен быть больше нуля")
-            return
-
-        self.trader.update_demo_balance("USDT", amount)
-
     def handle_event(self, event: pygame.event.Event) -> None:
         if self.order_dialog.visible:
             self.order_dialog.handle_event(event)
@@ -222,8 +265,6 @@ class CryptoTraderApp(BaseApp):
             return
         if self.new_order_button.handle_event(event):
             return
-        if self.balance_input.handle_event(event):
-            return
         if self.dropdown.handle_event(event):
             return
         if self.status_panel.handle_event(event):
@@ -233,7 +274,6 @@ class CryptoTraderApp(BaseApp):
             if not self.search.rect.collidepoint(event.pos) and not self.dropdown.hit_test(event.pos):
                 self.dropdown.visible = False
                 self.search.active = False
-                self.balance_input.active = False
 
         if not self.search.active and self.chart.handle_event(event):
             return
@@ -251,23 +291,28 @@ class CryptoTraderApp(BaseApp):
         self.chart.update(dt)
         with self.state["lock"]:
             balance = self.state.get("demo_balance")
-        if balance is not None and not self.balance_input.active:
+        display_text = ""
+        if balance is not None:
             try:
                 numeric_balance = float(balance)
             except (TypeError, ValueError):
-                numeric_balance = None
-            if numeric_balance is not None:
-                formatted = f"{numeric_balance:.2f}"
-                if self.balance_input.text != formatted:
-                    self.balance_input.set_text(formatted)
+                display_text = str(balance)
+            else:
+                display_text = f"{numeric_balance:,.2f}".replace(",", " ")
+        if self.balance_display.text != display_text:
+            self.balance_display.set_text(display_text)
 
     def draw(self, screen: pygame.Surface) -> None:
         screen.fill(config.COLOR_BG)
         self.search.draw(screen)
         self.new_order_button.draw(screen)
+        self.balance_display.draw(screen)
         label = self.small.render("Демо баланс", True, config.COLOR_HINT)
-        screen.blit(label, (config.BALANCE_RECT[0] - label.get_width() - 8, config.BALANCE_RECT[1] + 5))
-        self.balance_input.draw(screen)
+        label_pos = (
+            self.balance_display.rect.x - label.get_width() - 8,
+            self.balance_display.rect.y + (self.balance_display.rect.height - label.get_height()) // 2,
+        )
+        screen.blit(label, label_pos)
         self.chart.draw(screen)
         self.status_panel.draw(screen)
         self.dropdown.draw(screen)
