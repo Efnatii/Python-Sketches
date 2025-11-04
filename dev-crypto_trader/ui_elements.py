@@ -145,7 +145,60 @@ class StatusPanel(GUIElement):
             messages = list(self.state.get("status_log", []))
         y = self.rect.y + 6
         line_h = self.font.get_height() + 4
-        for msg in messages[: (self.rect.height // line_h)]:
-            label = self.font.render(msg, True, (210, 210, 220))
-            surface.blit(label, (self.rect.x + 6, y))
-            y += line_h
+        max_lines = self.rect.height // line_h
+        max_width = self.rect.width - 12
+        drawn = 0
+        for msg in messages:
+            for line in self._wrap_text(msg, max_width):
+                if drawn >= max_lines:
+                    return
+                label = self.font.render(line, True, (210, 210, 220))
+                surface.blit(label, (self.rect.x + 6, y))
+                y += line_h
+                drawn += 1
+
+    def _wrap_text(self, text: str, max_width: int):
+        if not text:
+            yield ""
+            return
+
+        words = text.split()
+        if not words:
+            yield ""
+            return
+
+        line = ""
+        for word in words:
+            candidate = word if not line else f"{line} {word}"
+            if self.font.size(candidate)[0] <= max_width:
+                line = candidate
+                continue
+
+            if line:
+                yield from self._split_segment(line, max_width)
+                line = ""
+
+            if self.font.size(word)[0] <= max_width:
+                line = word
+            else:
+                yield from self._split_segment(word, max_width)
+
+        if line:
+            yield from self._split_segment(line, max_width)
+
+    def _split_segment(self, text: str, max_width: int):
+        if self.font.size(text)[0] <= max_width:
+            yield text
+            return
+
+        chunk = ""
+        for ch in text:
+            candidate = f"{chunk}{ch}" if chunk else ch
+            if self.font.size(candidate)[0] <= max_width:
+                chunk = candidate
+            else:
+                if chunk:
+                    yield chunk
+                chunk = ch
+        if chunk:
+            yield chunk
