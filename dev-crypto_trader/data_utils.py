@@ -21,6 +21,16 @@ def dedupe_candles(candles: List[Candle]) -> List[Candle]:
     return [by_ts[t] for t in sorted(by_ts.keys())]
 
 
+def merge_candles(existing: List[Candle], patch: List[Candle]) -> List[Candle]:
+    """Return *existing* candles updated with values from *patch*."""
+
+    if not existing:
+        return dedupe_candles(patch)
+    if not patch:
+        return dedupe_candles(existing)
+    return dedupe_candles(existing + patch)
+
+
 def cache_path(symbol: str) -> str:
     return os.path.join(config.CACHE_DIR, f"{symbol.upper()}.json")
 

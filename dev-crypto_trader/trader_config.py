@@ -20,6 +20,9 @@ SEARCH_RECT = (10, 10, 320, 26)
 CACHE_DIR = "cache"
 HISTORY_LOOKBACK_SECONDS = 7 * 24 * 3600
 TAIL_REFRESH_MINUTES = 15
+TAIL_SYNC_INTERVAL_SECONDS = 45
+GAP_BACKFILL_PRE_MINUTES = 3
+GAP_BACKFILL_POST_MINUTES = 2
 
 BINANCE_KLINES_URL = "https://api.binance.com/api/v3/klines"
 BINANCE_PRICE_URL = "https://api.binance.com/api/v3/ticker/price?symbol={symbol}"

@@ -167,6 +167,7 @@ class CandlesChart:
             return self.rect.bottom - n * self.rect.height
 
         self._draw_axes(surf, pmin, pmax, base, v0, v1)
+        self._draw_scale_label(surf, agg_min)
 
         self.hover_candle = None
         mx, my = pygame.mouse.get_pos()
@@ -221,9 +222,103 @@ class CandlesChart:
             for idx, surface_text in enumerate(surfaces):
                 surf.blit(surface_text, (tx + pad, ty + pad + idx * (self.font_small.get_height() + 2)))
 
-    def _draw_dashed_v(self, surface: pygame.Surface, x: int, y1: float, y2: float, color=(255, 255, 255), dash=6, gap=4) -> None:
+        self._draw_crosshair(surf, base, v0, v1, pmin, pmax)
+
+    def _draw_dashed_v(
+        self,
+        surface: pygame.Surface,
+        x: int,
+        y1: float,
+        y2: float,
+        color=(255, 255, 255),
+        dash=6,
+        gap=4,
+    ) -> None:
         y = y1
         while y < y2:
             y2_ = min(y + dash, y2)
             pygame.draw.line(surface, color, (x, y), (x, y2_), 1)
             y += dash + gap
+
+    def _draw_dashed_h(
+        self,
+        surface: pygame.Surface,
+        y: int,
+        x1: float,
+        x2: float,
+        color=(255, 255, 255),
+        dash=6,
+        gap=4,
+    ) -> None:
+        x = x1
+        while x < x2:
+            x2_ = min(x + dash, x2)
+            pygame.draw.line(surface, color, (x, y), (x2_, y), 1)
+            x += dash + gap
+
+    def _draw_scale_label(self, surf: pygame.Surface, agg_min: int) -> None:
+        label = self._format_scale_label(agg_min)
+        text = self.font_small.render(f"Таймфрейм: {label}", True, (230, 230, 238))
+        pad = 6
+        box_w = text.get_width() + 2 * pad
+        box_h = text.get_height() + 2 * pad
+        x = self.rect.left + 10
+        y = self.rect.top + 10
+        pygame.draw.rect(surf, (28, 30, 38), (x, y, box_w, box_h), border_radius=4)
+        pygame.draw.rect(surf, (54, 56, 70), (x, y, box_w, box_h), 1, border_radius=4)
+        surf.blit(text, (x + pad, y + pad))
+
+    def _format_scale_label(self, agg_min: int) -> str:
+        if agg_min < 60:
+            return f"{agg_min}m"
+        if agg_min % 1440 == 0:
+            days = agg_min // 1440
+            return f"{days}d"
+        if agg_min % 60 == 0:
+            hours = agg_min // 60
+            return f"{hours}h"
+        return f"{agg_min}m"
+
+    def _draw_crosshair(self, surf: pygame.Surface, base: float, v0: float, v1: float, pmin: float, pmax: float) -> None:
+        mx, my = pygame.mouse.get_pos()
+        if not self.rect.collidepoint(mx, my):
+            return
+
+        self._draw_dashed_v(surf, mx, self.rect.top, self.rect.bottom, (255, 255, 255))
+        self._draw_dashed_h(surf, my, self.rect.left, self.rect.right, (255, 255, 255))
+
+        rel_x = (mx - self.rect.left) / self.rect.width
+        rel_x = max(0.0, min(1.0, rel_x))
+        seconds = v0 + rel_x * (v1 - v0)
+        ts_abs = base + seconds
+        price_rel = (my - self.rect.top) / self.rect.height
+        price_rel = max(0.0, min(1.0, price_rel))
+        price = pmax - price_rel * (pmax - pmin)
+
+        lines = [
+            time.strftime("%d.%m %H:%M:%S", time.localtime(ts_abs)),
+            f"Цена: {price:.6f}",
+        ]
+        pad = 6
+        text_color = (18, 18, 24)
+        surfaces = [self.font_small.render(text, True, text_color) for text in lines]
+        width = max(surface.get_width() for surface in surfaces) + 2 * pad
+        height = len(surfaces) * (self.font_small.get_height() + 2) + 2 * pad
+
+        if mx < self.rect.centerx:
+            box_x = mx + 12
+        else:
+            box_x = mx - width - 12
+        if my < self.rect.centery:
+            box_y = my + 12
+        else:
+            box_y = my - height - 12
+
+        box_x = max(self.rect.left + 4, min(box_x, self.rect.right - width - 4))
+        box_y = max(self.rect.top + 4, min(box_y, self.rect.bottom - height - 4))
+
+        pygame.draw.rect(surf, (245, 245, 245), (box_x, box_y, width, height), border_radius=4)
+        pygame.draw.rect(surf, (52, 52, 60), (box_x, box_y, width, height), 1, border_radius=4)
+
+        for idx, surface_text in enumerate(surfaces):
+            surf.blit(surface_text, (box_x + pad, box_y + pad + idx * (self.font_small.get_height() + 2)))
