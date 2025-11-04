@@ -123,15 +123,10 @@ class BinanceFuturesConfig:
     def from_env(cls) -> Optional["BinanceFuturesConfig"]:
         """Create configuration using environment variables if available."""
 
-        _, api_key = _value_from_env("BINANCE_FUTURES_API_KEY", "BINANCE_API_KEY")
-        _, api_secret = _value_from_env("BINANCE_FUTURES_API_SECRET", "BINANCE_API_SECRET")
+        _ensure_env_loaded(("BINANCE_API_KEY", "BINANCE_API_SECRET"))
 
-        if not api_key or not api_secret:
-            _ensure_env_loaded(("BINANCE_FUTURES_API_KEY", "BINANCE_FUTURES_API_SECRET"))
-            if not api_key:
-                _, api_key = _value_from_env("BINANCE_FUTURES_API_KEY", "BINANCE_API_KEY")
-            if not api_secret:
-                _, api_secret = _value_from_env("BINANCE_FUTURES_API_SECRET", "BINANCE_API_SECRET")
+        _, api_key = _value_from_env("BINANCE_API_KEY")
+        _, api_secret = _value_from_env("BINANCE_API_SECRET")
 
         if not api_key or not api_secret:
             return None
@@ -220,7 +215,7 @@ class DemoFuturesTrader:
         if config is None:
             _log_to_state(
                 state,
-                "Ключи Binance Futures не найдены. Убедитесь, что заданы BINANCE_FUTURES_API_KEY/BINANCE_API_KEY и BINANCE_FUTURES_API_SECRET/BINANCE_API_SECRET.",
+                "Ключи Binance не найдены. Убедитесь, что заданы BINANCE_API_KEY и BINANCE_API_SECRET.",
             )
             return
         self._client = BinanceFuturesClient(config)
