@@ -195,14 +195,41 @@ class StatusPanel(GUIElement):
         self.active_tab = 0
         self._tab_height = 32
         self._tab_padding = 6
+        self._log_scroll = 0
+        self._order_scroll = 0
+        self._log_max_scroll = 0
+        self._order_max_scroll = 0
 
     def handle_event(self, event: pygame.event.Event) -> bool:
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            for idx, rect in self._tab_rects():
-                if rect.collidepoint(event.pos):
-                    self.active_tab = idx
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button in (4, 5) and self.rect.collidepoint(event.pos):
+                if event.pos[1] >= self.rect.y + self._tab_height:
+                    delta = -1 if event.button == 4 else 1
+                    if self.active_tab == 0:
+                        self._scroll_log(delta)
+                    else:
+                        self._scroll_orders(delta)
                     return True
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self.rect.collidepoint(event.pos):
+            if event.button == 1:
+                for idx, rect in self._tab_rects():
+                    if rect.collidepoint(event.pos):
+                        self.active_tab = idx
+                        return True
+        if event.type == pygame.MOUSEWHEEL:
+            mouse_pos = pygame.mouse.get_pos()
+            if self.rect.collidepoint(mouse_pos) and mouse_pos[1] >= self.rect.y + self._tab_height:
+                delta = -event.y
+                if delta:
+                    if self.active_tab == 0:
+                        self._scroll_log(delta)
+                    else:
+                        self._scroll_orders(delta)
+                    return True
+        if (
+            event.type == pygame.MOUSEBUTTONDOWN
+            and event.button == 1
+            and self.rect.collidepoint(event.pos)
+        ):
             if event.pos[1] < self.rect.y + self._tab_height:
                 return True
             if self.active_tab == 0:
@@ -246,49 +273,78 @@ class StatusPanel(GUIElement):
             self._draw_orders(surface)
 
     def _visible_message_layout(self):
-        with self.state["lock"]:
-            messages = list(self.state.get("status_log", []))
         line_h = self.font.get_height() + 4
         content_rect = self._content_rect()
-        max_lines = content_rect.height // line_h
-        max_width = content_rect.width - 12
-        y = content_rect.y + 6
+        max_lines = max(1, content_rect.height // line_h)
+        entries, total_lines = self._log_entries(content_rect.width - 12)
+        self._log_max_scroll = max(0, total_lines - max_lines)
+        if self._log_scroll > self._log_max_scroll:
+            self._log_scroll = self._log_max_scroll
+
+        skip = self._log_scroll
+        consumed = 0
         drawn = 0
+        y = content_rect.y + 6
         layout = []
-        for msg in messages:
-            if drawn >= max_lines:
-                break
-            lines = list(self._wrap_text(msg, max_width))
-            if not lines:
-                lines = [""]
+        for msg, lines in entries:
+            entry_lines = len(lines)
+            if skip >= consumed + entry_lines:
+                consumed += entry_lines
+                continue
+
+            start = max(0, skip - consumed)
+            visible_lines = lines[start:]
             available = max_lines - drawn
-            visible_lines = lines[:available]
+            if available <= 0:
+                break
+            visible_lines = visible_lines[:available]
+
             top = y
             bottom = y + line_h * len(visible_lines)
             layout.append((msg, top, bottom, visible_lines))
             y = bottom
             drawn += len(visible_lines)
+            consumed += entry_lines
+            if drawn >= max_lines:
+                break
         return layout
 
     def _draw_orders(self, surface: pygame.Surface) -> None:
         line_h = self.font.get_height() + 4
         content_rect = self._content_rect()
+        max_lines = max(1, content_rect.height // line_h)
+        entries, total_lines = self._order_entries(content_rect.width - 12)
+        self._order_max_scroll = max(0, total_lines - max_lines)
+        if self._order_scroll > self._order_max_scroll:
+            self._order_scroll = self._order_max_scroll
+
+        skip = self._order_scroll
+        consumed = 0
+        drawn = 0
         y = content_rect.y + 6
 
-        with self.state["lock"]:
-            orders = list(self.state.get("order_log", []))
+        for lines in entries:
+            entry_lines = len(lines)
+            if skip >= consumed + entry_lines:
+                consumed += entry_lines
+                continue
 
-        for order in orders:
-            if y + line_h > content_rect.bottom - 6:
+            start = max(0, skip - consumed)
+            visible = lines[start:]
+            available = max_lines - drawn
+            if available <= 0:
                 break
-            text = (
-                f"[{order.get('time', '')}] {order.get('side', '')} {order.get('symbol', '')}"
-                f" {order.get('type', '')} qty={order.get('quantity', '')}"
-                f" price={order.get('price', '')} ({order.get('status', '')})"
-            )
-            label = self.font.render(text, True, (210, 210, 220))
-            surface.blit(label, (content_rect.x + 6, y))
-            y += line_h
+            visible = visible[:available]
+
+            for line in visible:
+                label = self.font.render(line, True, (210, 210, 220))
+                surface.blit(label, (content_rect.x + 6, y))
+                y += line_h
+
+            drawn += len(visible)
+            consumed += entry_lines
+            if drawn >= max_lines:
+                break
 
     def _wrap_text(self, text: str, max_width: int):
         if not text:
@@ -350,6 +406,61 @@ class StatusPanel(GUIElement):
             x = self.rect.x + self._tab_padding + idx * (width + self._tab_padding)
             rect = pygame.Rect(x, self.rect.y + self._tab_padding, width, self._tab_height - 2 * self._tab_padding)
             yield idx, rect
+
+    def _scroll_log(self, delta: int) -> None:
+        self._log_scroll = max(0, min(self._log_scroll + delta, self._compute_log_max_scroll()))
+
+    def _scroll_orders(self, delta: int) -> None:
+        self._order_scroll = max(0, min(self._order_scroll + delta, self._compute_order_max_scroll()))
+
+    def _compute_log_max_scroll(self) -> int:
+        line_h = self.font.get_height() + 4
+        content_rect = self._content_rect()
+        max_lines = max(1, content_rect.height // line_h)
+        entries, total_lines = self._log_entries(content_rect.width - 12)
+        self._log_max_scroll = max(0, total_lines - max_lines)
+        if self._log_scroll > self._log_max_scroll:
+            self._log_scroll = self._log_max_scroll
+        return self._log_max_scroll
+
+    def _compute_order_max_scroll(self) -> int:
+        line_h = self.font.get_height() + 4
+        content_rect = self._content_rect()
+        max_lines = max(1, content_rect.height // line_h)
+        entries, total_lines = self._order_entries(content_rect.width - 12)
+        self._order_max_scroll = max(0, total_lines - max_lines)
+        if self._order_scroll > self._order_max_scroll:
+            self._order_scroll = self._order_max_scroll
+        return self._order_max_scroll
+
+    def _log_entries(self, max_width: int):
+        with self.state["lock"]:
+            messages = list(self.state.get("status_log", []))
+
+        entries = []
+        total_lines = 0
+        for msg in messages:
+            lines = list(self._wrap_text(msg, max_width)) or [""]
+            entries.append((msg, lines))
+            total_lines += len(lines)
+        return entries, total_lines
+
+    def _order_entries(self, max_width: int):
+        with self.state["lock"]:
+            orders = list(self.state.get("order_log", []))
+
+        entries = []
+        total_lines = 0
+        for order in orders:
+            text = (
+                f"[{order.get('time', '')}] {order.get('side', '')} {order.get('symbol', '')}"
+                f" {order.get('type', '')} qty={order.get('quantity', '')}"
+                f" price={order.get('price', '')} ({order.get('status', '')})"
+            )
+            lines = list(self._wrap_text(text, max_width)) or [""]
+            entries.append(lines)
+            total_lines += len(lines)
+        return entries, total_lines
 
 
 class OrderDialog(GUIElement):
