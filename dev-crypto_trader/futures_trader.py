@@ -25,15 +25,29 @@ _ENV_LOADED = False
 def _value_from_env(*names: str) -> Tuple[Optional[str], Optional[str]]:
     """Return the first non-empty environment variable among ``names``."""
 
+    env_items = list(os.environ.items())
     for name in names:
-        if name not in os.environ:
+        raw_value = os.environ.get(name)
+        if raw_value is None:
+            # ``os.environ`` is case-insensitive on Windows, but users may define
+            # variables with a different casing via the GUI.  Perform a
+            # case-insensitive lookup to cover such situations.
+            upper_name = name.upper()
+            for existing, value in env_items:
+                if existing.upper() == upper_name:
+                    raw_value = value
+                    break
+        if raw_value is None:
             continue
-        value = os.environ.get(name)
-        if value is None:
-            continue
-        if isinstance(value, str) and value.strip() == "":
-            continue
-        return name, value
+        if isinstance(raw_value, str):
+            cleaned = raw_value.strip()
+            if not cleaned:
+                continue
+        else:
+            cleaned = str(raw_value).strip()
+            if not cleaned:
+                continue
+        return name, cleaned
     return None, None
 
 
