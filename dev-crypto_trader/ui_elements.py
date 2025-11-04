@@ -138,24 +138,53 @@ class StatusPanel(GUIElement):
         self.font = font
         self.state = state
 
+    def handle_event(self, event: pygame.event.Event) -> bool:
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self.rect.collidepoint(event.pos):
+            layout = self._visible_message_layout()
+            y = event.pos[1]
+            for message, top, bottom, _ in layout:
+                if top <= y < bottom:
+                    try:
+                        pygame.scrap.put(pygame.SCRAP_TEXT, message.encode("utf-8"))
+                    except pygame.error:
+                        pass
+                    return True
+        return False
+
     def draw(self, surface: pygame.Surface) -> None:
         pygame.draw.rect(surface, (24, 24, 32), self.rect)
         pygame.draw.rect(surface, (55, 55, 75), self.rect, 1)
-        with self.state["lock"]:
-            messages = list(self.state.get("status_log", []))
-        y = self.rect.y + 6
         line_h = self.font.get_height() + 4
-        max_lines = self.rect.height // line_h
-        max_width = self.rect.width - 12
-        drawn = 0
-        for msg in messages:
-            for line in self._wrap_text(msg, max_width):
-                if drawn >= max_lines:
-                    return
+        for _, top, _, lines in self._visible_message_layout():
+            y = top
+            for line in lines:
                 label = self.font.render(line, True, (210, 210, 220))
                 surface.blit(label, (self.rect.x + 6, y))
                 y += line_h
-                drawn += 1
+
+    def _visible_message_layout(self):
+        with self.state["lock"]:
+            messages = list(self.state.get("status_log", []))
+        line_h = self.font.get_height() + 4
+        max_lines = self.rect.height // line_h
+        max_width = self.rect.width - 12
+        y = self.rect.y + 6
+        drawn = 0
+        layout = []
+        for msg in messages:
+            if drawn >= max_lines:
+                break
+            lines = list(self._wrap_text(msg, max_width))
+            if not lines:
+                lines = [""]
+            available = max_lines - drawn
+            visible_lines = lines[:available]
+            top = y
+            bottom = y + line_h * len(visible_lines)
+            layout.append((msg, top, bottom, visible_lines))
+            y = bottom
+            drawn += len(visible_lines)
+        return layout
 
     def _wrap_text(self, text: str, max_width: int):
         if not text:

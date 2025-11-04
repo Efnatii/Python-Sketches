@@ -21,6 +21,8 @@ class BaseApp:
         pygame.init()
         self.screen = pygame.display.set_mode((width, height))
         pygame.display.set_caption(title)
+        if not pygame.scrap.get_init():
+            pygame.scrap.init()
         self.clock = pygame.time.Clock()
         self.fps = fps
         self.running = True
@@ -134,6 +136,8 @@ class CryptoTraderApp(BaseApp):
             self.dropdown.visible = True
             return
         if self.dropdown.handle_event(event):
+            return
+        if self.status_panel.handle_event(event):
             return
 
         if event.type == pygame.MOUSEBUTTONDOWN:
