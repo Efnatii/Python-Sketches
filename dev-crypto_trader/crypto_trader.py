@@ -266,7 +266,11 @@ class CryptoTraderApp(BaseApp):
         self.search.draw(screen)
         self.new_order_button.draw(screen)
         label = self.small.render("Демо баланс", True, config.COLOR_HINT)
-        screen.blit(label, (config.BALANCE_RECT[0] - label.get_width() - 8, config.BALANCE_RECT[1] + 5))
+        label_pos = (
+            config.BALANCE_RECT[0] + config.BALANCE_RECT[2] + 12,
+            config.BALANCE_RECT[1] + (config.BALANCE_RECT[3] - label.get_height()) // 2,
+        )
+        screen.blit(label, label_pos)
         self.balance_input.draw(screen)
         self.chart.draw(screen)
         self.status_panel.draw(screen)
