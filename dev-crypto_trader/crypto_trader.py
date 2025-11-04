@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from typing import List
 
 import pygame
@@ -10,6 +11,7 @@ import pygame
 import trader_config as config
 from binance_client import fetch_all_symbols
 from chart_view import CandlesChart
+from futures_trader import DemoFuturesTrader
 from price_fetcher import PriceFetcher
 from ui_elements import DropdownList, StatusPanel, TextInput
 
@@ -81,6 +83,10 @@ class CryptoTraderApp(BaseApp):
         self.price_fetcher = PriceFetcher(self.state)
         self.price_fetcher.start()
 
+        self.trader = DemoFuturesTrader(self.state)
+        if self.trader.is_enabled():
+            self._append_status("Горячие клавиши: B — покупка, S — продажа (демо фьючерсы)")
+
         self.all_symbols = fetch_all_symbols()
         self.filtered_symbols: List[str] = self.all_symbols[:300]
         self.dropdown.set_items(self.filtered_symbols)
@@ -96,6 +102,29 @@ class CryptoTraderApp(BaseApp):
         self.dropdown.visible = False
         self.search.active = False
         config.save_last_symbol(symbol)
+        self._append_status(f"Текущий символ: {symbol}")
+
+    def _append_status(self, message: str) -> None:
+        with self.state["lock"]:
+            log: List[str] = self.state.setdefault("status_log", [])
+            stamp = time.strftime("%H:%M:%S")
+            log.insert(0, f"[{stamp}] {message}")
+            del log[100:]
+
+    def _place_demo_order(self, side: str) -> None:
+        with self.state["lock"]:
+            symbol = self.state.get("current_symbol")
+            price = self.state.get("last_price")
+
+        if not symbol:
+            self._append_status("Выберите торговую пару перед размещением ордера")
+            return
+
+        threading.Thread(
+            target=self.trader.place_market_order,
+            args=(symbol, side, price),
+            daemon=True,
+        ).start()
 
     def handle_event(self, event: pygame.event.Event) -> None:
         if self.search.handle_event(event):
@@ -117,8 +146,17 @@ class CryptoTraderApp(BaseApp):
 
         if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN and not self.search.active and self.filtered_symbols:
             self._on_symbol(self.filtered_symbols[0])
+            return
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             self.running = False
+            return
+        if event.type == pygame.KEYDOWN and not self.search.active:
+            if event.key == pygame.K_b:
+                self._place_demo_order("BUY")
+                return
+            if event.key == pygame.K_s:
+                self._place_demo_order("SELL")
+                return
 
     def update(self, dt: float) -> None:
         if not self.search.active:
