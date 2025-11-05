@@ -13,7 +13,7 @@ from binance_client import fetch_all_symbols
 from chart_view import CandlesChart
 from futures_trader import DemoFuturesTrader
 from price_fetcher import PriceFetcher
-from ui_elements import Button, DropdownList, OrderDialog, StatusPanel, TextInput
+from ui_elements import Button, DropdownList, Label, OrderDialog, StatusPanel, TextInput
 
 
 class BaseApp:
@@ -73,11 +73,14 @@ class CryptoTraderApp(BaseApp):
             self.small,
             on_click=self._open_order_dialog,
         )
-        self.balance_input = TextInput(
+        self.balance_label = Label(
             pygame.Rect(*config.BALANCE_RECT),
             self.small,
-            placeholder="Баланс",
-            on_enter=self._update_balance,
+            text="Баланс: —",
+            text_color=config.COLOR_TEXT,
+            bg_color=(35, 36, 46),
+            border_color=(90, 90, 110),
+            border_radius=4,
         )
         self.dropdown = DropdownList(
             config.SEARCH_RECT[0],
@@ -210,21 +213,6 @@ class CryptoTraderApp(BaseApp):
         threading.Thread(target=worker, daemon=True).start()
         self.order_dialog.close()
 
-    def _update_balance(self, value: str) -> None:
-        cleaned = value.replace(",", ".").strip()
-        if not cleaned:
-            return
-        try:
-            amount = float(cleaned)
-        except ValueError:
-            self._append_status(f"Некорректный баланс: {value}")
-            return
-        if amount <= 0:
-            self._append_status("Баланс должен быть больше нуля")
-            return
-
-        self.trader.update_demo_balance("USDT", amount)
-
     def handle_event(self, event: pygame.event.Event) -> None:
         if self.order_dialog.visible:
             self.order_dialog.handle_event(event)
@@ -237,8 +225,6 @@ class CryptoTraderApp(BaseApp):
             return
         if self.new_order_button.handle_event(event):
             return
-        if self.balance_input.handle_event(event):
-            return
         if self.dropdown.handle_event(event):
             return
         if self.status_panel.handle_event(event):
@@ -248,7 +234,6 @@ class CryptoTraderApp(BaseApp):
             if not self.search.rect.collidepoint(event.pos) and not self.dropdown.hit_test(event.pos):
                 self.dropdown.visible = False
                 self.search.active = False
-                self.balance_input.active = False
 
         if not self.search.active and self.chart.handle_event(event):
             return
@@ -266,15 +251,16 @@ class CryptoTraderApp(BaseApp):
         self.chart.update(dt)
         with self.state["lock"]:
             balance = self.state.get("demo_balance")
-        if balance is not None and not self.balance_input.active:
+        display_text = "Баланс: —"
+        if balance is not None:
             try:
                 numeric_balance = float(balance)
             except (TypeError, ValueError):
                 numeric_balance = None
             if numeric_balance is not None:
-                formatted = f"{numeric_balance:.2f}"
-                if self.balance_input.text != formatted:
-                    self.balance_input.set_text(formatted)
+                display_text = f"Баланс: {numeric_balance:.2f} USDT"
+        if display_text != self.balance_label.text:
+            self.balance_label.set_text(display_text)
 
     def draw(self, screen: pygame.Surface) -> None:
         screen.fill(config.COLOR_BG)
@@ -286,7 +272,7 @@ class CryptoTraderApp(BaseApp):
             config.TOPBAR_Y + (config.SEARCH_RECT[3] - label.get_height()) // 2,
         )
         screen.blit(label, label_pos)
-        self.balance_input.draw(screen)
+        self.balance_label.draw(screen)
         self.chart.draw(screen)
         self.status_panel.draw(screen)
         self.dropdown.draw(screen)

@@ -65,6 +65,43 @@ class TextInput(GUIElement):
         surface.blit(label, (self.rect.x + 6, self.rect.y + (self.rect.height - label.get_height()) // 2))
 
 
+class Label(GUIElement):
+    def __init__(
+        self,
+        rect: pygame.Rect,
+        font: pygame.font.Font,
+        text: str = "",
+        *,
+        text_color: Tuple[int, int, int] = (240, 240, 240),
+        bg_color: Optional[Tuple[int, int, int]] = None,
+        border_color: Optional[Tuple[int, int, int]] = None,
+        padding: int = 6,
+        border_radius: int = 0,
+    ) -> None:
+        super().__init__(rect)
+        self.font = font
+        self.text = text
+        self.text_color = text_color
+        self.bg_color = bg_color
+        self.border_color = border_color
+        self.padding = padding
+        self.border_radius = border_radius
+
+    def set_text(self, value: str) -> None:
+        self.text = value
+
+    def draw(self, surface: pygame.Surface) -> None:
+        if self.bg_color is not None:
+            pygame.draw.rect(surface, self.bg_color, self.rect, border_radius=self.border_radius)
+        if self.border_color is not None:
+            pygame.draw.rect(surface, self.border_color, self.rect, 1, border_radius=self.border_radius)
+        label = self.font.render(self.text, True, self.text_color)
+        surface.blit(
+            label,
+            (self.rect.x + self.padding, self.rect.y + (self.rect.height - label.get_height()) // 2),
+        )
+
+
 class Button(GUIElement):
     def __init__(
         self,
