@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from collections import deque
 from math import floor
 from typing import List, Tuple
 
@@ -32,6 +33,25 @@ def aggregate_candles(candles: List[Candle], minutes: int) -> List[Candle]:
     if bucket is not None:
         result.append((bucket["key"], bucket["o"], bucket["h"], bucket["l"], bucket["c"], True))
     return result
+
+
+def compute_simple_moving_average(candles: List[Candle], period: int) -> dict[float, float]:
+    if period <= 0:
+        return {}
+
+    window: deque[float] = deque()
+    total = 0.0
+    averages: dict[float, float] = {}
+
+    for ts, _open, _high, _low, close, _flag in candles:
+        window.append(close)
+        total += close
+        if len(window) > period:
+            total -= window.popleft()
+        if len(window) == period:
+            averages[ts] = total / period
+
+    return averages
 
 
 def choose_agg_minutes(px_per_candle: float) -> int:
@@ -203,6 +223,22 @@ class CandlesChart:
             prev_ts = ts_open
             prev_x_end = x + w
 
+        ma_settings = [
+            (7, (255, 206, 86)),
+            (25, (102, 191, 255)),
+            (99, (183, 102, 255)),
+        ]
+        self._draw_moving_averages(
+            surf,
+            draw_candles,
+            base,
+            v0,
+            v1,
+            px_per_sec,
+            y_from,
+            ma_settings,
+        )
+
         if self.hover_candle:
             ts_open, o, h, l, cl, _ = self.hover_candle["candle"]
             lines = [
@@ -223,6 +259,42 @@ class CandlesChart:
                 surf.blit(surface_text, (tx + pad, ty + pad + idx * (self.font_small.get_height() + 2)))
 
         self._draw_crosshair(surf, base, v0, v1, pmin, pmax)
+
+    def _draw_moving_averages(
+        self,
+        surf: pygame.Surface,
+        candles: List[Candle],
+        base: float,
+        v0: float,
+        v1: float,
+        px_per_sec: float,
+        y_from,
+        ma_settings: List[Tuple[int, Tuple[int, int, int]]],
+    ) -> None:
+        for period, color in ma_settings:
+            averages = compute_simple_moving_average(candles, period)
+            if not averages:
+                continue
+
+            last_point = None
+            for candle in candles:
+                ts_open = candle[0]
+                value = averages.get(ts_open)
+                if value is None:
+                    continue
+
+                st_rel = ts_open - base
+                if st_rel > v1:
+                    break
+
+                x = self.rect.left + (st_rel - v0) * px_per_sec
+                y = y_from(value)
+                point = (x, y)
+
+                if last_point is not None:
+                    pygame.draw.line(surf, color, last_point, point, 2)
+
+                last_point = point
 
     def _draw_dashed_v(
         self,
