@@ -529,6 +529,8 @@ class OrderDialog(GUIElement):
 
         self.quantity_input = TextInput(self._quantity_rect(), small_font, placeholder="")
         self.price_input = TextInput(self._price_rect(), small_font, placeholder="")
+        self.take_profit_input = TextInput(self._take_profit_rect(), small_font, placeholder="")
+        self.stop_loss_input = TextInput(self._stop_loss_rect(), small_font, placeholder="")
         self.confirm_button = Button(self._confirm_button_rect(), "Отправить", small_font)
         self.cancel_button = Button(self._cancel_button_rect(), "Отмена", small_font)
         self.on_submit: Optional[Callable[[dict], None]] = None
@@ -551,14 +553,20 @@ class OrderDialog(GUIElement):
             self.price_input.set_text(f"{last_price:.4f}")
         else:
             self.price_input.set_text("")
+        self.take_profit_input.set_text("")
+        self.stop_loss_input.set_text("")
         self.quantity_input.active = False
         self.price_input.active = False
+        self.take_profit_input.active = False
+        self.stop_loss_input.active = False
         self._sync_layout()
 
     def close(self) -> None:
         self.visible = False
         self.quantity_input.active = False
         self.price_input.active = False
+        self.take_profit_input.active = False
+        self.stop_loss_input.active = False
         self._order_type_dropdown_open = False
 
     def handle_event(self, event: pygame.event.Event) -> bool:
@@ -616,6 +624,10 @@ class OrderDialog(GUIElement):
             return True
         if self.order_type == "LIMIT" and self.price_input.handle_event(event):
             return True
+        if self.take_profit_input.handle_event(event):
+            return True
+        if self.stop_loss_input.handle_event(event):
+            return True
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self._side_rect("BUY").collidepoint(event.pos):
@@ -640,6 +652,8 @@ class OrderDialog(GUIElement):
                 "price": self.price_input.text.strip(),
                 "reduce_only": self.reduce_only,
                 "move_sl_to_be": self.move_sl_to_be,
+                "take_profit": self.take_profit_input.text.strip(),
+                "stop_loss": self.stop_loss_input.text.strip(),
             }
             if self.on_submit:
                 self.on_submit(payload)
@@ -709,8 +723,7 @@ class OrderDialog(GUIElement):
             surface.set_clip(scroll_area)
 
         quantity_lbl = self.small_font.render("Количество", True, (180, 180, 190))
-        quantity_y = max(self._quantity_rect().y - 22, scroll_area.y + 4)
-        surface.blit(quantity_lbl, (self._content_x(), quantity_y))
+        surface.blit(quantity_lbl, (self._content_x(), self._quantity_rect().y - 26))
         self.quantity_input.draw(surface)
 
         if self.order_type == "LIMIT":
@@ -718,10 +731,15 @@ class OrderDialog(GUIElement):
             surface.blit(price_lbl, (self._content_x(), self._price_rect().y - 26))
             self.price_input.draw(surface)
 
+        tp_lbl = self.small_font.render("Тейк-профит", True, (180, 180, 190))
+        surface.blit(tp_lbl, (self._content_x(), self._take_profit_rect().y - 26))
+        self.take_profit_input.draw(surface)
+
+        sl_lbl = self.small_font.render("Стоп-лосс", True, (180, 180, 190))
+        surface.blit(sl_lbl, (self._content_x(), self._stop_loss_rect().y - 26))
+        self.stop_loss_input.draw(surface)
+
         reduce_rect = self._reduce_only_rect()
-        tp_sl_label = self.small_font.render("TP/SL", True, (180, 180, 190))
-        tp_sl_label_y = max(reduce_rect.y - 24, scroll_area.y + 4)
-        surface.blit(tp_sl_label, (self._content_x(), tp_sl_label_y))
         pygame.draw.rect(surface, (40, 45, 60), reduce_rect, border_radius=4)
         if self.reduce_only:
             pygame.draw.rect(surface, (120, 180, 120), reduce_rect.inflate(-6, -6), border_radius=3)
@@ -849,6 +867,14 @@ class OrderDialog(GUIElement):
         top = self._base_price_top() - self.scroll_offset
         return pygame.Rect(self._content_x(), top, self._content_width(), self.input_height)
 
+    def _take_profit_rect(self) -> pygame.Rect:
+        top = self._base_take_profit_top() - self.scroll_offset
+        return pygame.Rect(self._content_x(), top, self._content_width(), self.input_height)
+
+    def _stop_loss_rect(self) -> pygame.Rect:
+        top = self._base_stop_loss_top() - self.scroll_offset
+        return pygame.Rect(self._content_x(), top, self._content_width(), self.input_height)
+
     def _cancel_button_rect(self) -> pygame.Rect:
         width = 150
         height = 36
@@ -865,6 +891,8 @@ class OrderDialog(GUIElement):
         self.scroll_offset = max(0, min(self.scroll_offset, self._max_scroll()))
         self.quantity_input.rect = self._quantity_rect()
         self.price_input.rect = self._price_rect()
+        self.take_profit_input.rect = self._take_profit_rect()
+        self.stop_loss_input.rect = self._stop_loss_rect()
         self.cancel_button.rect = self._cancel_button_rect()
         self.confirm_button.rect = self._confirm_button_rect()
 
@@ -874,11 +902,17 @@ class OrderDialog(GUIElement):
     def _base_price_top(self) -> int:
         return self._base_quantity_top() + self.input_height + 44
 
-    def _base_reduce_only_top(self) -> int:
-        top = self._base_quantity_top() + self.input_height + 24
+    def _base_take_profit_top(self) -> int:
+        top = self._base_quantity_top() + self.input_height + 44
         if self.order_type == "LIMIT":
-            top = self._base_price_top() + self.input_height + 24
+            top = self._base_price_top() + self.input_height + 44
         return top
+
+    def _base_stop_loss_top(self) -> int:
+        return self._base_take_profit_top() + self.input_height + 44
+
+    def _base_reduce_only_top(self) -> int:
+        return self._base_stop_loss_top() + self.input_height + 24
 
     def _base_move_sl_top(self) -> int:
         return self._base_reduce_only_top() + 44

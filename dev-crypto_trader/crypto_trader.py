@@ -155,6 +155,8 @@ class CryptoTraderApp(BaseApp):
         move_sl_to_be = bool(payload.get("move_sl_to_be"))
         quantity_text = (payload.get("quantity") or "").replace(",", ".").strip()
         price_text = (payload.get("price") or "").replace(",", ".").strip()
+        take_profit_text = (payload.get("take_profit") or "").replace(",", ".").strip()
+        stop_loss_text = (payload.get("stop_loss") or "").replace(",", ".").strip()
 
         quantity_value: Optional[float] = None
         if quantity_text:
@@ -165,6 +167,28 @@ class CryptoTraderApp(BaseApp):
                 return
             if quantity_value <= 0:
                 self._append_status("Количество должно быть больше нуля")
+                return
+
+        take_profit_value: Optional[float] = None
+        if take_profit_text:
+            try:
+                take_profit_value = float(take_profit_text)
+            except ValueError:
+                self._append_status(f"Некорректный тейк-профит: {take_profit_text}")
+                return
+            if take_profit_value <= 0:
+                self._append_status("Тейк-профит должен быть больше нуля")
+                return
+
+        stop_loss_value: Optional[float] = None
+        if stop_loss_text:
+            try:
+                stop_loss_value = float(stop_loss_text)
+            except ValueError:
+                self._append_status(f"Некорректный стоп-лосс: {stop_loss_text}")
+                return
+            if stop_loss_value <= 0:
+                self._append_status("Стоп-лосс должен быть больше нуля")
                 return
 
         with self.state["lock"]:
@@ -191,6 +215,8 @@ class CryptoTraderApp(BaseApp):
                     quantity=quantity_value,
                     reduce_only=reduce_only,
                     move_sl_to_be=move_sl_to_be,
+                    take_profit=take_profit_value,
+                    stop_loss=stop_loss_value,
                 )
 
             threading.Thread(target=worker, daemon=True).start()
@@ -205,6 +231,8 @@ class CryptoTraderApp(BaseApp):
                 quantity=quantity_value,
                 reduce_only=reduce_only,
                 move_sl_to_be=move_sl_to_be,
+                take_profit=take_profit_value,
+                stop_loss=stop_loss_value,
             )
 
         threading.Thread(target=worker, daemon=True).start()
