@@ -76,11 +76,8 @@ class CryptoTraderApp(BaseApp):
         self.balance_label = Label(
             pygame.Rect(*config.BALANCE_RECT),
             self.small,
-            text="Баланс: —",
+            text="—",
             text_color=config.COLOR_TEXT,
-            bg_color=(35, 36, 46),
-            border_color=(90, 90, 110),
-            border_radius=4,
         )
         self.dropdown = DropdownList(
             config.SEARCH_RECT[0],
@@ -251,14 +248,14 @@ class CryptoTraderApp(BaseApp):
         self.chart.update(dt)
         with self.state["lock"]:
             balance = self.state.get("demo_balance")
-        display_text = "Баланс: —"
+        display_text = "—"
         if balance is not None:
             try:
                 numeric_balance = float(balance)
             except (TypeError, ValueError):
                 numeric_balance = None
             if numeric_balance is not None:
-                display_text = f"Баланс: {numeric_balance:.2f} USDT"
+                display_text = f"{numeric_balance:.2f} USDT"
         if display_text != self.balance_label.text:
             self.balance_label.set_text(display_text)
 
