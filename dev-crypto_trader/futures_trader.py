@@ -191,6 +191,15 @@ class BinanceFuturesClient:
         response.raise_for_status()
         return response.json()
 
+    def public_get(self, path: str, params: Optional[Dict[str, str]] = None) -> Dict:
+        response = self.session.get(
+            f"{self.config.base_url}{path}",
+            params=params,
+            timeout=self.config.timeout,
+        )
+        response.raise_for_status()
+        return response.json()
+
     # -- higher level helpers ---------------------------------------------
     def place_market_order(self, symbol: str, side: str, quantity: str, reduce_only: bool = False) -> Dict:
         return self.place_order(symbol, side, "MARKET", quantity, reduce_only=reduce_only)
@@ -241,6 +250,27 @@ class BinanceFuturesClient:
             params["reduceOnly"] = "true"
         return self.post("/fapi/v1/order", params)
 
+    def place_exit_order(self, symbol: str, side: str, order_type: str, stop_price: str) -> Dict:
+        params = {
+            "symbol": symbol,
+            "side": side,
+            "type": order_type,
+            "stopPrice": stop_price,
+            "closePosition": "true",
+            "timestamp": str(int(time.time() * 1000)),
+        }
+        return self.post("/fapi/v1/order", params)
+
+    def get_position_risk(self) -> List[Dict]:
+        params = {"timestamp": str(int(time.time() * 1000))}
+        data = self.get("/fapi/v2/positionRisk", params)
+        if isinstance(data, list):
+            return data
+        return []
+
+    def get_symbol_info(self, symbol: str) -> Dict:
+        return self.public_get("/fapi/v1/exchangeInfo", {"symbol": symbol})
+
     def get_balances(self):
         params = {
             "timestamp": str(int(time.time() * 1000)),
@@ -269,6 +299,7 @@ class DemoFuturesTrader:
         self.state = state
         self._lock = threading.Lock()
         self._client: Optional[BinanceFuturesClient] = None
+        self._symbol_tick_cache: Dict[str, Optional[float]] = {}
         config = BinanceFuturesConfig.from_env()
         if config is None:
             _log_to_state(
@@ -361,6 +392,176 @@ class DemoFuturesTrader:
             return None
         return self._determine_quantity(symbol, price)
 
+    def _closing_side(self, side: str) -> str:
+        return "SELL" if side.upper() == "BUY" else "BUY"
+
+    def _handle_exit_orders(
+        self,
+        symbol: str,
+        side: str,
+        *,
+        take_profit: Optional[float],
+        stop_loss: Optional[float],
+        move_sl_to_be: bool,
+    ) -> None:
+        if not (take_profit or stop_loss or move_sl_to_be):
+            return
+        if not self.is_enabled():
+            _log_to_state(
+                self.state,
+                "Невозможно создать тейк-профит/стоп-лосс без API ключей Binance",
+            )
+            return
+        if take_profit is not None:
+            self._place_take_profit(symbol, side, take_profit)
+        if stop_loss is not None:
+            self._place_stop_loss(symbol, side, stop_loss)
+        if move_sl_to_be:
+            self._schedule_break_even_stop(symbol, side)
+
+    def _submit_exit_order(
+        self,
+        symbol: str,
+        side: str,
+        order_type: str,
+        price_value: float,
+        label: str,
+    ) -> bool:
+        if price_value <= 0:
+            _log_to_state(self.state, f"Не удалось создать {label} {symbol}: цена должна быть положительной")
+            return False
+        formatted = self._format_price(price_value)
+        with self._lock:
+            assert self._client is not None
+            try:
+                self._client.place_exit_order(symbol, side, order_type, formatted)
+            except requests.HTTPError as exc:
+                try:
+                    payload = exc.response.json()
+                    message = payload.get("msg") if isinstance(payload, dict) else str(payload)
+                except Exception:
+                    message = str(exc)
+                _log_to_state(self.state, f"Биржа отклонила {label} {symbol}: {message}")
+                return False
+            except Exception as exc:
+                _log_to_state(self.state, f"Ошибка отправки {label} {symbol}: {exc}")
+                return False
+        _log_to_state(self.state, f"Создан {label} {symbol}: цена {formatted}")
+        return True
+
+    def _place_take_profit(self, symbol: str, side: str, price: float) -> None:
+        closing_side = self._closing_side(side)
+        self._submit_exit_order(symbol, closing_side, "TAKE_PROFIT_MARKET", price, "тейк-профит")
+
+    def _place_stop_loss(self, symbol: str, side: str, price: float) -> None:
+        closing_side = self._closing_side(side)
+        self._submit_exit_order(symbol, closing_side, "STOP_MARKET", price, "стоп-лосс")
+
+    def _get_tick_size(self, symbol: str) -> Optional[float]:
+        if symbol in self._symbol_tick_cache:
+            return self._symbol_tick_cache[symbol]
+        if not self.is_enabled():
+            self._symbol_tick_cache[symbol] = None
+            return None
+        assert self._client is not None
+        try:
+            info = self._client.get_symbol_info(symbol)
+        except Exception as exc:  # pragma: no cover - network errors
+            _log_to_state(self.state, f"Не удалось получить шаг цены {symbol}: {exc}")
+            self._symbol_tick_cache[symbol] = None
+            return None
+        tick: Optional[float] = None
+        if isinstance(info, dict):
+            symbols = info.get("symbols")
+            item = None
+            if isinstance(symbols, list) and symbols:
+                item = next((entry for entry in symbols if entry.get("symbol") == symbol), symbols[0])
+            elif info.get("symbol") == symbol:
+                item = info
+            if isinstance(item, dict):
+                for filt in item.get("filters", []):
+                    if filt.get("filterType") == "PRICE_FILTER":
+                        try:
+                            raw = float(filt.get("tickSize"))
+                        except (TypeError, ValueError):
+                            raw = None
+                        else:
+                            if raw and raw > 0:
+                                tick = raw
+                        break
+        if tick is None:
+            _log_to_state(self.state, f"Не удалось определить шаг цены для {symbol}")
+        self._symbol_tick_cache[symbol] = tick
+        return tick
+
+    def _break_even_price(self, symbol: str, entry_price: float, side: str) -> Optional[float]:
+        if entry_price <= 0:
+            return None
+        tick = self._get_tick_size(symbol)
+        if tick and tick > 0:
+            if side.upper() == "BUY":
+                return entry_price + tick
+            candidate = entry_price - tick
+            return candidate if candidate > 0 else max(tick, entry_price * 0.99)
+        adjustment = max(entry_price * 0.001, 0.0001)
+        if side.upper() == "BUY":
+            return entry_price + adjustment
+        candidate = entry_price - adjustment
+        return candidate if candidate > 0 else entry_price * 0.99
+
+    def _schedule_break_even_stop(self, symbol: str, side: str) -> None:
+        assert self._client is not None
+
+        def worker() -> None:
+            attempts = 120
+            while attempts > 0:
+                time.sleep(5)
+                try:
+                    positions = self._client.get_position_risk()
+                except Exception as exc:  # pragma: no cover - network errors
+                    _log_to_state(self.state, f"Не удалось получить позиции для {symbol}: {exc}")
+                    return
+                position = next((item for item in positions if item.get("symbol") == symbol), None)
+                if not position:
+                    attempts -= 1
+                    continue
+                try:
+                    position_amt = float(position.get("positionAmt") or 0.0)
+                    entry_price = float(position.get("entryPrice") or 0.0)
+                    unrealized = float(position.get("unRealizedProfit") or 0.0)
+                except (TypeError, ValueError):
+                    attempts -= 1
+                    continue
+                if side.upper() == "BUY" and position_amt <= 0:
+                    attempts -= 1
+                    continue
+                if side.upper() == "SELL" and position_amt >= 0:
+                    attempts -= 1
+                    continue
+                if entry_price <= 0:
+                    attempts -= 1
+                    continue
+                if unrealized <= 0:
+                    attempts -= 1
+                    continue
+                stop_price = self._break_even_price(symbol, entry_price, side)
+                if stop_price is None:
+                    _log_to_state(self.state, f"Не удалось рассчитать цену безубытка для {symbol}")
+                    return
+                closing_side = self._closing_side(side)
+                if self._submit_exit_order(
+                    symbol,
+                    closing_side,
+                    "STOP_MARKET",
+                    stop_price,
+                    "стоп-лосс (безубыток)",
+                ):
+                    return
+                attempts -= 1
+            _log_to_state(self.state, f"Не удалось перенести SL в безубыток для {symbol}: позиция не приносит прибыль")
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def _log_balances_async(self) -> None:
         if not self.is_enabled():
             return
@@ -398,6 +599,8 @@ class DemoFuturesTrader:
         quantity: Optional[float] = None,
         reduce_only: bool = False,
         move_sl_to_be: bool = False,
+        take_profit: Optional[float] = None,
+        stop_loss: Optional[float] = None,
     ) -> None:
         if not self.is_enabled():
             _log_to_state(self.state, "Демо торговля недоступна: нет API ключей")
@@ -472,6 +675,13 @@ class DemoFuturesTrader:
             price=price_str,
             status="Исполнен",
         )
+        self._handle_exit_orders(
+            symbol,
+            side,
+            take_profit=take_profit,
+            stop_loss=stop_loss,
+            move_sl_to_be=move_sl_to_be,
+        )
 
     def place_limit_order(
         self,
@@ -482,6 +692,8 @@ class DemoFuturesTrader:
         quantity: Optional[float] = None,
         reduce_only: bool = False,
         move_sl_to_be: bool = False,
+        take_profit: Optional[float] = None,
+        stop_loss: Optional[float] = None,
     ) -> None:
         if not self.is_enabled():
             _log_to_state(self.state, "Демо торговля недоступна: нет API ключей")
@@ -554,6 +766,13 @@ class DemoFuturesTrader:
             quantity=qty_value,
             price=price_formatted,
             status=status,
+        )
+        self._handle_exit_orders(
+            symbol,
+            side,
+            take_profit=take_profit,
+            stop_loss=stop_loss,
+            move_sl_to_be=move_sl_to_be,
         )
 
     def update_demo_balance(self, asset: str, amount: float) -> None:
